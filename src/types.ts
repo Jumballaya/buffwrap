@@ -25,6 +25,17 @@ export type WrapperStruct = {
     | [number, number, number, number];
 };
 
+export type BufferList<T extends WrapperStruct> = {
+  [k in keyof T]:
+    | Float32Array
+    | Uint8Array
+    | Int8Array
+    | Uint16Array
+    | Int16Array
+    | Uint32Array
+    | Int32Array; // TypedArray type
+};
+
 export type ArrayType =
   | Float32Array
   | Uint8Array

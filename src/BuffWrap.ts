@@ -1,21 +1,10 @@
-import {
+import type {
   ArrayType,
+  BufferList,
   WrapperConfig,
   WrapperStruct,
   WrapperStructCompiled,
-  WrapperStructTypesConfig,
 } from "./types";
-
-type BufferList<T extends WrapperStruct> = {
-  [k in keyof T]:
-    | Float32Array
-    | Uint8Array
-    | Int8Array
-    | Uint16Array
-    | Int16Array
-    | Uint32Array
-    | Int32Array; // TypedArray type
-};
 
 export class BufferWrap<T extends WrapperStruct> {
   private config: WrapperConfig<T>;
@@ -74,6 +63,10 @@ export class BufferWrap<T extends WrapperStruct> {
     }
   }
 
+  //
+  // Get an instance of the struct at index `idx`
+  //
+  //
   public at(idx: number) {
     //
     // If we found the cached entry, just send it
@@ -172,9 +165,67 @@ export class BufferWrap<T extends WrapperStruct> {
     this.map.set(idx, obj);
     return obj;
   }
+
+  //
+  // Interleve Data:
+  //  if config.interleve is true, this does nothing
+  //  otherwise it will interleve the data into a single buffer
+  //
+  // @TODO: The idea here is to create a single ArrayBuffer
+  //        from the capacity * stride in bytes
+  //        then create type apropriate views of the buffer
+  //        and fill them with the non-interleved data
+  public interleveData() {}
+
+  //
+  // Split data:
+  // if config.interleve is false, this does nothing
+  // otherwise it will split an interleved data buffer
+  // into 1 buffer per attribute
+  //
+  // @TODO: The implementation idea is to create the
+  //        set of array buffers for each attribute
+  //        and then read the interleved ArrayBuffer
+  //        to fill out the various buffers
+  public splitData() {}
+
+  //
+  //  From:
+  //
+  //  Take in an interleved buffer or struct of buffers
+  //  and use that as the data for this configured
+  //  BuffWrap
+  //
+  //  @TODO: Take in a buffer or buffers and:
+  //
+  //         single buffer: copy the data over
+  //         to the BuffWrap's buffer, or buffers
+  //         if its non-interleved
+  //
+  //         struct of buffers:
+  //         walk through the struct and copy the
+  //         data if non-interleved, or copy it into
+  //         the single buffer if interleved.
+  public from(buffer: ArrayType) {}
+
+  // @TODO: Think about the following methods:
+  //
+  //      slice    (create a BuffWrapSlice)
+  //      insert   (insert a list of structs at an index, given a buffer, a struct of buffers, another BuffWrap or a BuffWrapSlice)
+  //      copyInto (copies data into a struct of buffers, a single buffer, into another BuffWrap, or a BuffWrapSlice)
+  //
+  public slice(start: number, end = Infinity): BuffWrapSlice<T> {
+    return new BuffWrapSlice<T>();
+  }
+
+  public insert(start: number, data: ArrayType) {}
+
+  public copyInto() {}
 }
 
 function generate_struct_out(len: number): number | number[] {
   if (len === 1) return 0;
   return Array.from(new Array(len)).map(() => 0);
 }
+
+class BuffWrapSlice<T extends WrapperStruct> {}
