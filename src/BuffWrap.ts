@@ -151,7 +151,14 @@ export class BufferWrap<T extends WrapperStruct> {
   //         walk through the struct and copy the
   //         data if non-interleved, or copy it into
   //         the single buffer if interleved.
-  public from(buffer: ArrayType) {}
+  public from(buffer: ArrayBuffer) {
+    if (buffer instanceof ArrayBuffer) {
+      this.buffer = buffer.slice();
+    } else {
+      this.buffer = (buffer as ArrayType).buffer.slice();
+    }
+    this.map.clear();
+  }
 
   // @TODO: Think about the following methods:
   //
