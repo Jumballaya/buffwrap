@@ -61,3 +61,9 @@ export type WrapperConfig<T extends WrapperStruct> = {
   capacity: number; // number of total elements
   chunkSize?: number; // minimum number of bytes in a chunk. data must have a byteLength that is a multiple of chunkSize
 };
+
+export type WrapperConfigOffsets<T extends WrapperStruct> = {
+  offsets: {
+    [k in keyof T]: number;
+  };
+};

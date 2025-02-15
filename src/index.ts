@@ -1,5 +1,7 @@
 import { BufferWrap } from "./BuffWrap";
 
+import "./deep_keys";
+
 type VertexStruct = {
   position: [number, number, number];
   texCoord: [number, number];
@@ -29,7 +31,7 @@ function create_quad_buffers_from() {
     ])
   );
 
-  console.log(quadWrapper.at(1).position);
+  console.log(quadWrapper.getAttributeBuffer("normal"));
   return {
     vertices: new Float32Array(quadWrapper.buffer),
     indices: quadIndices,
@@ -76,4 +78,4 @@ function create_quad_buffers() {
   };
 }
 
-create_quad_buffers_from();
+// create_quad_buffers_from();
