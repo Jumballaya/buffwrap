@@ -6,11 +6,28 @@ import type {
   WrapperStructCompiled,
 } from "./types";
 
+//
+// BufferWrap
+//
+//    BufferWrap makes it easy to deal with a buffer of structured data.
+//    This could be particles in a particle system, messages passed from
+//    web workers, information from a WebGPU compute pipeline, lighting
+//    data in a uniform buffer, etc. etc.
+//
+//
+//      @TODO: Auto interleve/non-interleve when asked for.
+//             a common pattern in the API should be passing in a buffer
+//             (Float32Array, Uint32Array, etc.) or passing in a struct
+//            of buffers (plain object with a string key and buffer value)
+//            with the idea that it will be written into or read from
+//            depending on the method called.
+//
+//
 export class BufferWrap<T extends WrapperStruct> {
   private config: WrapperConfig<T>;
   private map: Map<number, WrapperStructCompiled<T>> = new Map();
-  public buffer?: ArrayType;
-  public buffers: BufferList<T> = {} as BufferList<T>; // @TODO: better typing
+  public buffer: ArrayBuffer;
+  // public buffers: BufferList<T> = {} as BufferList<T>; // @TODO: better typing
   private stride = 0;
 
   //
@@ -21,46 +38,10 @@ export class BufferWrap<T extends WrapperStruct> {
   constructor(config: WrapperConfig<T>) {
     this.config = config;
     for (const k of Object.keys(config.struct)) {
-      this.stride += config.struct[k];
+      this.stride += config.struct[k] * config.types[k].BYTES_PER_ELEMENT;
     }
-    //
-    //  Handle the interleved scenario
-    //
-    //  This is easy, we just create 1 giant buffer
-    //  the size is just the stride from above
-    //  multiplied by the capacity.
-    //  If the config has the interleve field set to
-    //  true, then we can use the type field as a
-    //  constructor for our buffer.
-    if (config.interleve) {
-      let size = this.stride * config.capacity;
-      size = Math.max(
-        config.chunkSize ?? 4,
-        size + (size % (config.chunkSize ?? 4))
-      );
-      this.buffer = new config.type(size);
-
-      //
-      // Handle the Non-interleved scenario
-      //
-      // We need to create the buffers from
-      // the give constructors
-      // 1 buffer will exist for each field
-      // in the struct.
-      // Each buffer is created just like
-      // the one above.
-    } else {
-      for (const k of Object.keys(config.types)) {
-        const stride = config.struct[k];
-        let size = stride * config.capacity;
-        size = Math.max(
-          config.chunkSize ?? 4,
-          size + (size % (config.chunkSize ?? 4))
-        );
-        const buffer = new config.types[k](size);
-        (this.buffers as any)[k] = buffer; // @TODO: typing
-      }
-    }
+    const byteLength = this.stride * config.capacity;
+    this.buffer = new ArrayBuffer(byteLength);
   }
 
   //
@@ -80,11 +61,8 @@ export class BufferWrap<T extends WrapperStruct> {
     //
     // This is what we need in scope from the BufferWrap class
     // as well as keeping track of the overall offset
-    const index = idx * this.stride;
-    const buffer = this.buffer || new Float32Array(0);
-    const buffers = this.buffers;
-    const struct = this.config.struct;
-    const interleved = this.config.interleve;
+    const _getAttr = this.getElementAttribute.bind(this); // @TODO: Find a better way to build the attributes to avoid this
+    const _setAttr = this.setElementAttribute.bind(this); // @TODO: Find a better way to build the attributes to avoid this
     let offset = 0;
 
     //
@@ -92,7 +70,6 @@ export class BufferWrap<T extends WrapperStruct> {
     // key is each of the keys of the struct and the value
     // for each key is a pair of getters/setters.
     const attributes = Object.keys(this.config.struct).map((k: keyof T) => {
-      const len = this.config.struct[k];
       const off = offset;
       const out = {
         //
@@ -100,49 +77,17 @@ export class BufferWrap<T extends WrapperStruct> {
         //  varialble. otherwise use the buffers variable
         //
         get [k](): number | number[] {
-          let out = generate_struct_out(len);
-          if (interleved) {
-            for (let i = 0; i < len; i++) {
-              if (typeof out === "number") {
-                out = buffer[index + off + i];
-              } else if (out instanceof Array) {
-                out[i] = buffer[index + off + i];
-              }
-            }
-            return out;
-          }
-          const singleBuffer = buffers[k];
-          if (singleBuffer) {
-            const index = idx * struct[k];
-            for (let i = 0; i < len; i++) {
-              if (typeof out === "number") {
-                out = singleBuffer[index + off + i];
-              } else if (out instanceof Array) {
-                out[i] = singleBuffer[index + off + i];
-              }
-            }
-          }
-          return out;
+          return _getAttr(k, off, idx);
         },
         //
         //  Setter: if the data is interleved then use the buffer
         //  varialble. otherwise use the buffers variable
         //
         set [k](v: number | number[]) {
-          if (interleved) {
-            for (let i = 0; i < len; i++) {
-              buffer[index + off + i] = (typeof v === "number" ? v : v[i]) ?? 0;
-            }
-            return;
-          }
-          const singleBuffer = buffers[k];
-          for (let i = 0; i < len; i++) {
-            singleBuffer[index + off + i] =
-              (typeof v === "number" ? v : v[i]) ?? 0;
-          }
+          _setAttr(k, v, off, idx);
         },
       } as { [k in keyof T]: T[k] };
-      offset += len;
+      offset += this.config.struct[k] * this.config.types[k].BYTES_PER_ELEMENT;
       return out;
     }) satisfies Array<{ [k in keyof T]: T[k] }>;
 
@@ -221,11 +166,101 @@ export class BufferWrap<T extends WrapperStruct> {
   public insert(start: number, data: ArrayType) {}
 
   public copyInto() {}
-}
 
-function generate_struct_out(len: number): number | number[] {
-  if (len === 1) return 0;
-  return Array.from(new Array(len)).map(() => 0);
+  //
+  // Private internal helper methods
+  //
+
+  //
+  //  Get Element
+  //
+  //  Gets a single element's attribute's value
+  //
+  private getElementAttribute(
+    key: keyof T,
+    offset: number, // byte offset into the individual struct
+    index: number
+  ): number | number[] {
+    const len = this.config.struct[key];
+    const startByte = index * this.stride + offset;
+    const endByte = startByte + len * this.config.types[key].BYTES_PER_ELEMENT;
+    const buffer = new this.config.types[key](
+      this.buffer.slice(startByte, endByte)
+    );
+
+    if (len === 1) {
+      return buffer[0];
+    }
+    return Array.from(buffer);
+  }
+
+  //
+  //  Set Element
+  //
+  //  Sets the data on an element's attribute
+  //
+  private setElementAttribute(
+    key: keyof T,
+    v: number | number[],
+    offset: number, // byte offset into the individual struct
+    index: number
+  ) {
+    const value = new this.config.types[key](typeof v === "number" ? [v] : v);
+    const startByte = index * this.stride + offset;
+    new Uint8Array(this.buffer, 0, this.buffer.byteLength).set(
+      new Uint8Array(value.buffer),
+      startByte
+    );
+  }
 }
 
 class BuffWrapSlice<T extends WrapperStruct> {}
+
+// const out = {
+//   //
+//   //  Getter: if the data is interleved then use the buffer
+//   //  varialble. otherwise use the buffers variable
+//   //
+//   get [k](): number | number[] {
+//     let out = generate_struct_out(len);
+//     if (interleved) {
+//       for (let i = 0; i < len; i++) {
+//         if (typeof out === "number") {
+//           out = buffer[index + off + i];
+//         } else if (out instanceof Array) {
+//           out[i] = buffer[index + off + i];
+//         }
+//       }
+//       return out;
+//     }
+//     const singleBuffer = buffers[k];
+//     if (singleBuffer) {
+//       const index = idx * struct[k];
+//       for (let i = 0; i < len; i++) {
+//         if (typeof out === "number") {
+//           out = singleBuffer[index + off + i];
+//         } else if (out instanceof Array) {
+//           out[i] = singleBuffer[index + off + i];
+//         }
+//       }
+//     }
+//     return out;
+//   },
+//   //
+//   //  Setter: if the data is interleved then use the buffer
+//   //  varialble. otherwise use the buffers variable
+//   //
+//   set [k](v: number | number[]) {
+//     if (interleved) {
+//       for (let i = 0; i < len; i++) {
+//         buffer[index + off + i] = (typeof v === "number" ? v : v[i]) ?? 0;
+//       }
+//       return;
+//     }
+//     const singleBuffer = buffers[k];
+//     for (let i = 0; i < len; i++) {
+//       singleBuffer[index + off + i] =
+//         (typeof v === "number" ? v : v[i]) ?? 0;
+//     }
+//   },
+// } as { [k in keyof T]: T[k] };

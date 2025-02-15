@@ -55,28 +55,9 @@ export type Vec<T extends number> = T extends 1
   ? [number, number, number, number]
   : number;
 
-export type WrapperConfig<T extends WrapperStruct> = WrapperConfigBase<T> &
-  (WrapperConfigInterleve | WrapperConfigNonInterleve<T>);
-
-type WrapperConfigBase<T extends WrapperStruct> = {
+export type WrapperConfig<T extends WrapperStruct> = {
   struct: WrapperStructConfig<T>;
+  types: WrapperStructTypesConfig<T>;
   capacity: number; // number of total elements
   chunkSize?: number; // minimum number of bytes in a chunk. data must have a byteLength that is a multiple of chunkSize
-};
-
-type WrapperConfigInterleve = {
-  type:
-    | typeof Float32Array
-    | typeof Uint8Array
-    | typeof Int8Array
-    | typeof Uint16Array
-    | typeof Int16Array
-    | typeof Uint32Array
-    | typeof Int32Array; // TypedArray Constructor type
-  interleve: true;
-};
-
-type WrapperConfigNonInterleve<T extends WrapperStruct> = {
-  types: WrapperStructTypesConfig<T>;
-  interleve: false;
 };

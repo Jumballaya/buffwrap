@@ -1,4 +1,4 @@
-import { BufferWrap } from "./BuffWrap";
+import { BufferWrap } from "../BuffWrap";
 
 type VertexStruct = {
   position: [number, number, number];
@@ -6,7 +6,7 @@ type VertexStruct = {
   normal: [number, number, number];
 };
 
-function create_quad_buffers() {
+function basic_example() {
   const quadWrapper = new BufferWrap<VertexStruct>({
     types: {
       position: Float32Array,
@@ -38,7 +38,8 @@ function create_quad_buffers() {
     }
   }
 
-  console.log(new Float32Array(quadWrapper.buffer));
+  return {
+    buffer: quadWrapper,
+    indices: quadIndices,
+  };
 }
-
-create_quad_buffers();
