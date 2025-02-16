@@ -156,13 +156,6 @@ export class BufferWrap<T extends WrapperStruct> {
   //      insert   (insert a list of structs at an index, given a buffer, a struct of buffers, another BuffWrap or a BuffWrapSlice)
   //      copyInto (copies data into a struct of buffers, a single buffer, into another BuffWrap, or a BuffWrapSlice)
   //
-  public slice(start: number, end = Infinity): BuffWrapSlice<T> {
-    return new BuffWrapSlice<T>(this, start, end);
-  }
-
-  public insert(start: number, data: ArrayType) {}
-
-  public copyInto() {}
 
   //
   // Private internal helper methods
@@ -201,23 +194,5 @@ export class BufferWrap<T extends WrapperStruct> {
       new Uint8Array(value.buffer),
       startByte
     );
-  }
-}
-
-class BuffWrapSlice<T extends WrapperStruct> {
-  private parent: BufferWrap<T>;
-  private start = 0;
-  private end = Infinity;
-
-  constructor(parent: BufferWrap<T>, start = 0, end = Infinity) {
-    this.parent = parent;
-    this.start = start;
-    this.end = end;
-  }
-
-  public at(idx: number) {
-    const start = this.start + idx;
-    if (start >= this.end) return undefined;
-    return this.parent.at(start);
   }
 }
