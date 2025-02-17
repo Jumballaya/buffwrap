@@ -176,12 +176,6 @@ export class BufferWrap<T extends WrapperStruct> {
     return Array.from(buffer);
   }
 
-  //
-  //  Set Element
-  //
-  //  Sets the data on an element's attribute
-  //
-  //  @TODO: Update the non-interleved buffers struct
   private setElementAttribute(
     key: keyof T,
     v: number | number[],
@@ -190,9 +184,17 @@ export class BufferWrap<T extends WrapperStruct> {
     const offset = this.config.offsets[key];
     const value = new this.config.types[key](typeof v === "number" ? [v] : v);
     const startByte = index * this.stride + offset;
+
+    // make sure to update the main buffer
     new Uint8Array(this.buffer, 0, this.buffer.byteLength).set(
       new Uint8Array(value.buffer),
       startByte
     );
+
+    // as well as to update the individual attribute buffer
+    if (this.buffers[key]) {
+      const attrOffset = index * value.length;
+      this.buffers[key].set(value, attrOffset);
+    }
   }
 }
