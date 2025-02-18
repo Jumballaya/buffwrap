@@ -6,7 +6,66 @@ type VertexStruct = {
   normal: [number, number, number];
 };
 
-function basic_example() {
+function create_quad_buffers_from_struct() {
+  const quadWrapper = new BufferWrap<VertexStruct>({
+    types: {
+      position: Float32Array,
+      texCoord: Float32Array,
+      normal: Float32Array,
+    },
+    capacity: 4,
+    struct: {
+      position: 3,
+      texCoord: 2,
+      normal: 3,
+    },
+  });
+  const quadIndices = new Uint16Array([0, 1, 3, 0, 3, 2]);
+
+  quadWrapper.from({
+    position: new Float32Array([-1, -1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0]),
+    texCoord: new Float32Array([0, 0, 0, 1, 1, 0, 1, 1]),
+    normal: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+  });
+
+  console.log(quadWrapper.getAttributeBuffer("position"));
+  return {
+    vertices: new Float32Array(quadWrapper.buffer),
+    indices: quadIndices,
+  };
+}
+
+function create_quad_buffers_from() {
+  const quadWrapper = new BufferWrap<VertexStruct>({
+    types: {
+      position: Float32Array,
+      texCoord: Float32Array,
+      normal: Float32Array,
+    },
+    capacity: 4,
+    struct: {
+      position: 3,
+      texCoord: 2,
+      normal: 3,
+    },
+  });
+  const quadIndices = new Uint16Array([0, 1, 3, 0, 3, 2]);
+
+  quadWrapper.from(
+    new Float32Array([
+      -1, -1, 0, 0, 0, 0, 0, 1, -1, 1, 0, 0, 1, 0, 0, 1, 1, -1, 0, 1, 0, 0, 0,
+      1, 1, 1, 0, 1, 1, 0, 0, 1,
+    ])
+  );
+
+  console.log(quadWrapper.getAttributeBuffer("normal"));
+  return {
+    vertices: new Float32Array(quadWrapper.buffer),
+    indices: quadIndices,
+  };
+}
+
+function create_quad_buffers() {
   const quadWrapper = new BufferWrap<VertexStruct>({
     types: {
       position: Float32Array,
@@ -38,8 +97,10 @@ function basic_example() {
     }
   }
 
+  console.log(new Float32Array(quadWrapper.buffer));
+
   return {
-    buffer: quadWrapper,
+    vertices: new Float32Array(quadWrapper.buffer),
     indices: quadIndices,
   };
 }

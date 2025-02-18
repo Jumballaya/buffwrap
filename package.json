@@ -1,16 +1,16 @@
 {
   "name": "buffwrap",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "0.1.0",
+  "description": "Abstraction over arrays of typed structs",
+  "main": "./build/index.js",
   "scripts": {
-    "start": "npm run build && node build/index.js",
-    "build": "tsc"
+    "build": "tsup"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "tsup": "^8.3.6",
     "typescript": "^5.7.3"
   }
 }

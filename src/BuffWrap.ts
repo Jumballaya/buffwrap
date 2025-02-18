@@ -131,16 +131,16 @@ export class BufferWrap<T extends WrapperStruct> {
   //  and use that as the data for this configured
   //  BuffWrap
   public from(buffer: ArrayBuffer | Partial<BufferList<T>>) {
-    // TypedArray (e.g. Float32Array, Uint8Array, etc.)
-    if ((buffer as ArrayType).buffer) {
-      this.buffer = (buffer as ArrayType).buffer.slice();
+    // Actual ArrayBuffer class
+    if (buffer instanceof ArrayBuffer) {
+      this.buffer = buffer.slice();
       this.map.clear();
       return;
     }
 
-    // Actual ArrayBuffer class
-    if (buffer instanceof ArrayBuffer) {
-      this.buffer = buffer.slice();
+    // TypedArray (e.g. Float32Array, Uint8Array, etc.)
+    if (buffer.buffer) {
+      this.buffer = buffer.buffer.slice().buffer;
       this.map.clear();
       return;
     }
