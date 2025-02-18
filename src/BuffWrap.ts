@@ -130,23 +130,42 @@ export class BufferWrap<T extends WrapperStruct> {
   //  Take in an interleved buffer or struct of buffers
   //  and use that as the data for this configured
   //  BuffWrap
-  //
-  //  @TODO: Take in a buffer or buffers and:
-  //
-  //         single buffer: copy the data over
-  //         to the BuffWrap's buffer, or buffers
-  //         if its non-interleved
-  //
-  //         struct of buffers:
-  //         walk through the struct and copy the
-  //         data if non-interleved, or copy it into
-  //         the single buffer if interleved.
-  public from(buffer: ArrayBuffer) {
+  public from(buffer: ArrayBuffer | Partial<BufferList<T>>) {
+    // TypedArray (e.g. Float32Array, Uint8Array, etc.)
+    if ((buffer as ArrayType).buffer) {
+      this.buffer = (buffer as ArrayType).buffer.slice();
+      this.map.clear();
+      return;
+    }
+
+    // Actual ArrayBuffer class
     if (buffer instanceof ArrayBuffer) {
       this.buffer = buffer.slice();
-    } else {
-      this.buffer = (buffer as ArrayType).buffer.slice();
+      this.map.clear();
+      return;
     }
+
+    // Otherwise we have the partial bufferlist to build from
+    const keys: Array<keyof T> = Object.keys(buffer);
+    for (const k of keys) {
+      const inDataBuffer = buffer[k]!;
+      const stride = this.stride;
+      const offset = this.config.offsets[k];
+      const type = this.config.types[k];
+      const len = this.config.struct[k];
+      for (let i = 0; i < this.config.capacity; i++) {
+        const ptr = stride * i + offset;
+        new Uint8Array(this.buffer, ptr, len * type.BYTES_PER_ELEMENT).set(
+          new Uint8Array(
+            inDataBuffer.buffer,
+            i * len * type.BYTES_PER_ELEMENT,
+            len * type.BYTES_PER_ELEMENT
+          ),
+          0
+        );
+      }
+    }
+
     this.map.clear();
   }
 
