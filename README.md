@@ -2,6 +2,9 @@
 
 BufferWrap makes it easy to deal with a buffer of structured data. This could be particles in a particle system, messages passed from web workers, information from a WebGPU compute pipeline, lighting data in a uniform buffer, etc. etc.
 
+# TODO
+1. Add the id to the proxied struct
+
 ## Examples
 
 ### Basic
