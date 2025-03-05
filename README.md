@@ -6,6 +6,7 @@ BufferWrap makes it easy to deal with a buffer of structured data. This could be
 1. Add the id to the proxied struct
 2. Add the ability to move data from one index to another, preserving the already existing links. (BufferWrap.move(idxA, idxB) or BufferWrap.move(proxy, toIdx))
 3. Add more examples and patterns (like a BufferWrap manager that sits over a BufferWrap instance)
+4. Add a `byteLength() => number`, `.stride() => number` and `.attributeStride(attr: string) => number` methods
 
 ## Examples
 
