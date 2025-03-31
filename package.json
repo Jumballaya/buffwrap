@@ -1,6 +1,6 @@
 {
   "name": "buffwrap",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "Abstraction over arrays of typed structs",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
