@@ -23,34 +23,44 @@ export class BufferWrap<T extends WrapperStruct> {
   public buffer: ArrayBuffer;
   private view: DataView;
   private _stride = 0;
+  private baseOffset = 0;
 
-  constructor(config: WrapperConfig<T>) {
+  constructor(config: WrapperConfig<T> & Partial<WrapperConfigOffsets<T>>) {
     const alignment = config.alignment ?? 4;
-    const offsets: Record<string, number> = {};
-    let stride = 0;
 
-    for (const key of Object.keys(config.struct)) {
-      const type = config.types[key];
-      const typeAlignment = type.BYTES_PER_ELEMENT;
+    if (!config.offsets) {
+      const offsets: Record<string, number> = {};
+      let stride = 0;
+      for (const key of Object.keys(config.struct)) {
+        const type = config.types[key];
+        const typeAlignment = type.BYTES_PER_ELEMENT;
 
-      stride = alignOffset(stride, Math.max(alignment, typeAlignment));
-      offsets[key] = stride;
-      stride += config.struct[key] * typeAlignment;
+        stride = alignOffset(stride, Math.max(alignment, typeAlignment));
+        offsets[key] = stride;
+        stride += config.struct[key] * typeAlignment;
+      }
+
+      this._stride = stride;
+
+      this.config = {
+        ...config,
+        offsets: offsets as { [k in keyof T]: number },
+      };
+    } else {
+      this.config = config as WrapperConfig<T> & WrapperConfigOffsets<T>;
+      this._stride = Object.entries(this.config.offsets).reduce(
+        (acc, [key, val]) => {
+          const len = this.config.struct[key as keyof T];
+          const type = this.config.types[key as keyof T];
+          return Math.max(acc, val + len * type.BYTES_PER_ELEMENT);
+        },
+        0
+      );
     }
 
-    this._stride = stride;
-
-    this.config = {
-      ...config,
-      offsets: offsets as { [k in keyof T]: number },
-    };
-
     const byteLength = this._stride * config.capacity;
-    this.buffer = new ArrayBuffer(byteLength);
+    this.buffer = config.buffer ?? new ArrayBuffer(byteLength);
     this.view = new DataView(this.buffer);
-
-    console.log("CONFIG OFFSETS:", this.config.offsets);
-    console.log("STRIDE:", this._stride);
   }
 
   public get byteLength(): number {
@@ -91,6 +101,7 @@ export class BufferWrap<T extends WrapperStruct> {
     });
 
     this.proxyCache.set(idx, found);
+
     return found;
   }
 
@@ -199,20 +210,16 @@ export class BufferWrap<T extends WrapperStruct> {
     }
   }
 
-  public slice(start: number, end = this.config.capacity) {
-    const config = { ...this.config, capacity: end - start };
+  public slice(start: number, end = this.config.capacity): BufferWrap<T> {
+    const capacity = Math.max(0, end - start);
+    const config = {
+      ...this.config,
+      capacity,
+      buffer: this.buffer,
+    };
     const bw = new BufferWrap<T>(config);
-
-    bw.buffer = this.buffer;
     bw.view = this.view;
-
-    bw.config.offsets = Object.fromEntries(
-      Object.entries(this.config.offsets).map(([key, offset]) => [
-        key as keyof T,
-        offset + start * this._stride,
-      ])
-    ) as { [k in keyof T]: number };
-
+    bw.baseOffset = this.baseOffset + start * this._stride;
     return bw;
   }
 
@@ -248,13 +255,43 @@ export class BufferWrap<T extends WrapperStruct> {
     this.config.capacity = requiredCapacity;
 
     if (data instanceof BufferWrap) {
-      for (let i = 0; i < data.config.capacity; i++) {
-        const fromOffset = i * data._stride;
-        const toOffset = (idx + i) * this._stride;
-        new Uint8Array(this.buffer, toOffset, this._stride).set(
-          new Uint8Array(data.buffer, fromOffset, this._stride)
+      const sameStruct =
+        JSON.stringify(this.config.struct) ===
+        JSON.stringify(data.config.struct);
+      const sameTypes = Object.keys(this.config.types).every(
+        (k) => this.config.types[k] === data.config.types[k]
+      );
+
+      if (!sameStruct || !sameTypes) {
+        throw new Error("Incompatible BufferWrap: struct or types mismatch.");
+      }
+
+      const isSelfSlice = data.buffer === this.buffer;
+      const temp = isSelfSlice
+        ? new Uint8Array(data._stride * data.config.capacity)
+        : null;
+      if (isSelfSlice) {
+        temp?.set(
+          new Uint8Array(
+            data.buffer,
+            data.baseOffset,
+            data._stride * data.config.capacity
+          )
         );
       }
+
+      for (let i = 0; i < data.config.capacity; i++) {
+        const fromOffset = isSelfSlice
+          ? i * data._stride
+          : data.baseOffset + i * data._stride;
+        const toOffset = (idx + i) * this._stride;
+        new Uint8Array(this.buffer, toOffset, this._stride).set(
+          isSelfSlice && temp !== null
+            ? new Uint8Array(temp?.buffer, fromOffset, this._stride)
+            : new Uint8Array(data.buffer, fromOffset, this._stride)
+        );
+      }
+
       return;
     }
 
@@ -283,9 +320,6 @@ export class BufferWrap<T extends WrapperStruct> {
       for (let i = 0; i < len; i++) {
         const byteOffset =
           idx * this._stride + offset + i * type.BYTES_PER_ELEMENT;
-        console.log(
-          `WRITE: key=${key}, i=${i}, offset=${byteOffset}, val=${value[i]}`
-        );
         this.writeData(type, byteOffset, value[i]);
       }
     }
@@ -351,11 +385,11 @@ export class BufferWrap<T extends WrapperStruct> {
   // Private internal helper methods
   //
 
-  private getElementAttribute(key: keyof T, index: number): number | number[] {
-    const offset = this.config.offsets[key] + index * this._stride;
+  private getElementAttribute(key: keyof T, idx: number): number | number[] {
+    const offset =
+      this.baseOffset + this.config.offsets[key] + idx * this._stride;
     const len = this.config.struct[key];
     const type = this.config.types[key];
-    console.log(`READ: key=${key as string}, offset=${offset}, index=${index}`);
 
     if (len === 1) {
       return this.readData(type, offset);
@@ -373,7 +407,8 @@ export class BufferWrap<T extends WrapperStruct> {
     v: number | number[],
     index: number
   ) {
-    const offset = this.config.offsets[key] + index * this._stride;
+    const offset =
+      this.baseOffset + this.config.offsets[key] + index * this._stride;
     const type = this.config.types[key];
 
     if (typeof v === "number") {
@@ -383,8 +418,6 @@ export class BufferWrap<T extends WrapperStruct> {
         this.writeData(type, offset + i * type.BYTES_PER_ELEMENT, v[i]);
       }
     }
-
-    // Update the attribute buffer if it exists
     if (this.buffers[key]) {
       const attrOffset = index * (typeof v === "number" ? 1 : v.length);
       this.buffers[key].set(typeof v === "number" ? [v] : v, attrOffset);

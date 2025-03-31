@@ -1,78 +1,5 @@
 import BufferWrap from "../dist";
-
-type VertexStruct = {
-  position: [number, number, number];
-  texCoord: [number, number];
-  normal: [number, number, number];
-};
-
-test("Can create a simple quad", () => {
-  const quadWrapper = new BufferWrap<VertexStruct>({
-    types: {
-      position: Float32Array,
-      texCoord: Float32Array,
-      normal: Float32Array,
-    },
-    capacity: 4,
-    struct: {
-      position: 3,
-      texCoord: 2,
-      normal: 3,
-    },
-  });
-
-  const xPos = [-1, 1];
-  const yPos = [-1, 1];
-  const xUv = [0, 1];
-  const yUv = [0, 1];
-  const normal: [number, number, number] = [0, 0, 1];
-
-  let c = 0;
-  for (let i = 0; i < 2; i++) {
-    for (let j = 0; j < 2; j++) {
-      quadWrapper.at(c).position = [xPos[i], yPos[j], 0];
-      quadWrapper.at(c).texCoord = [xUv[i], yUv[j]];
-      quadWrapper.at(c).normal = normal;
-      c++;
-    }
-  }
-
-  // Positions
-  expect(quadWrapper.at(0).position).toStrictEqual([-1, -1, 0]);
-  expect(quadWrapper.at(1).position).toStrictEqual([-1, 1, 0]);
-  expect(quadWrapper.at(2).position).toStrictEqual([1, -1, 0]);
-  expect(quadWrapper.at(3).position).toStrictEqual([1, 1, 0]);
-
-  // Tex Coords
-  expect(quadWrapper.at(0).texCoord).toStrictEqual([0, 0]);
-  expect(quadWrapper.at(1).texCoord).toStrictEqual([0, 1]);
-  expect(quadWrapper.at(2).texCoord).toStrictEqual([1, 0]);
-  expect(quadWrapper.at(3).texCoord).toStrictEqual([1, 1]);
-
-  // Normals
-  expect(quadWrapper.at(0).normal).toStrictEqual([0, 0, 1]);
-  expect(quadWrapper.at(1).normal).toStrictEqual([0, 0, 1]);
-  expect(quadWrapper.at(2).normal).toStrictEqual([0, 0, 1]);
-  expect(quadWrapper.at(3).normal).toStrictEqual([0, 0, 1]);
-});
-
-type TestStruct = {
-  a: number;
-  b: [number, number];
-};
-
-const config = {
-  struct: {
-    a: 1,
-    b: 2,
-  },
-  types: {
-    a: Uint8Array,
-    b: Float32Array,
-  },
-  capacity: 4,
-  alignment: 4,
-};
+import { config, TestStruct } from "./helper";
 
 test("Can set and get single and vector values", () => {
   const buffer = new BufferWrap<TestStruct>(config);
@@ -96,20 +23,6 @@ test("Can move one entry to another index", () => {
   expect(buffer.at(1).a).toBe(123);
   expect(buffer.at(1).b[0]).toBeCloseTo(3.14);
   expect(buffer.at(1).b[1]).toBeCloseTo(6.28);
-});
-
-test("Slice returns shared view", () => {
-  const buffer = new BufferWrap<TestStruct>(config);
-  buffer.at(1).a = 100;
-  buffer.at(1).b = [9, 9];
-
-  const slice = buffer.slice(1, 2);
-  expect(slice.at(0).a).toBe(100);
-  expect(slice.at(0).b).toStrictEqual([9, 9]);
-
-  // Modify slice and see changes in original
-  slice.at(0).a = 88;
-  expect(buffer.at(1).a).toBe(88);
 });
 
 test("Can insert raw struct at index", () => {

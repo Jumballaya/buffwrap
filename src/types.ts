@@ -62,6 +62,7 @@ export type WrapperConfig<T extends WrapperStruct> = {
   types: WrapperStructTypesConfig<T>;
   capacity: number; // number of total elements
   alignment?: number;
+  buffer?: ArrayBuffer;
 };
 
 export type WrapperConfigOffsets<T extends WrapperStruct> = {
