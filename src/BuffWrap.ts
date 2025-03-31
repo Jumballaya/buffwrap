@@ -16,10 +16,6 @@ import type {
 //    This could be particles in a particle system, messages passed from
 //    web workers, information from a WebGPU compute pipeline, lighting
 //    data in a uniform buffer, etc. etc.
-//
-//    @TODO: use the DataView 'view' attribute instead of the 'buffer' ArrayBuffer
-//           attribute wherever possible. This is to make sure a BufferWrap created
-//           from a .slice() call works as intended.
 export class BufferWrap<T extends WrapperStruct> {
   private config: WrapperConfig<T> & WrapperConfigOffsets<T>;
   private proxyCache: Map<number, WrapperStructCompiled<T>> = new Map();
@@ -29,12 +25,19 @@ export class BufferWrap<T extends WrapperStruct> {
   private _stride = 0;
 
   constructor(config: WrapperConfig<T>) {
+    const alignment = config.alignment ?? 4;
     const offsets: Record<string, number> = {};
     let stride = 0;
-    for (const k of Object.keys(config.struct)) {
-      offsets[k] = stride;
-      stride += config.struct[k] * config.types[k].BYTES_PER_ELEMENT;
+
+    for (const key of Object.keys(config.struct)) {
+      const type = config.types[key];
+      const typeAlignment = type.BYTES_PER_ELEMENT;
+
+      stride = alignOffset(stride, Math.max(alignment, typeAlignment));
+      offsets[key] = stride;
+      stride += config.struct[key] * typeAlignment;
     }
+
     this._stride = stride;
 
     this.config = {
@@ -45,6 +48,9 @@ export class BufferWrap<T extends WrapperStruct> {
     const byteLength = this._stride * config.capacity;
     this.buffer = new ArrayBuffer(byteLength);
     this.view = new DataView(this.buffer);
+
+    console.log("CONFIG OFFSETS:", this.config.offsets);
+    console.log("STRIDE:", this._stride);
   }
 
   public get byteLength(): number {
@@ -52,7 +58,7 @@ export class BufferWrap<T extends WrapperStruct> {
   }
 
   public get stride(): number {
-    return this.stride;
+    return this._stride;
   }
 
   public attributeStride(name: string): number {
@@ -125,14 +131,18 @@ export class BufferWrap<T extends WrapperStruct> {
     // Actual ArrayBuffer class
     if (buffer instanceof ArrayBuffer) {
       this.buffer = buffer.slice();
+      this.view = new DataView(this.buffer);
       this.proxyCache.clear();
+      this.buffers = {} as BufferList<T>;
       return;
     }
 
     // TypedArray (e.g. Float32Array, Uint8Array, etc.)
     if (buffer.buffer) {
       this.buffer = buffer.buffer.slice().buffer;
+      this.view = new DataView(this.buffer);
       this.proxyCache.clear();
+      this.buffers = {} as BufferList<T>;
       return;
     }
 
@@ -158,6 +168,7 @@ export class BufferWrap<T extends WrapperStruct> {
     }
 
     this.proxyCache.clear();
+    this.buffers = {} as BufferList<T>;
   }
 
   // Move an element from one location to another.
@@ -213,7 +224,6 @@ export class BufferWrap<T extends WrapperStruct> {
   ) {
     const insertCount = data instanceof BufferWrap ? data.config.capacity : 1;
     const requiredCapacity = this.config.capacity + insertCount;
-    this.config.capacity = requiredCapacity;
 
     if (requiredCapacity * this._stride > this.buffer.byteLength) {
       const newBufferSize = Math.max(
@@ -223,10 +233,10 @@ export class BufferWrap<T extends WrapperStruct> {
       const newBuffer = new ArrayBuffer(newBufferSize);
       new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
       this.buffer = newBuffer;
-      this.view = new DataView(newBuffer);
+      this.view = new DataView(this.buffer);
     }
 
-    // just moving everything forward from where were want to insert
+    // Move existing data forward to make space
     for (let i = this.config.capacity - 1; i >= idx; i--) {
       const fromOffset = i * this._stride;
       const toOffset = (i + insertCount) * this._stride;
@@ -234,6 +244,8 @@ export class BufferWrap<T extends WrapperStruct> {
         new Uint8Array(this.buffer, fromOffset, this._stride)
       );
     }
+
+    this.config.capacity = requiredCapacity;
 
     if (data instanceof BufferWrap) {
       for (let i = 0; i < data.config.capacity; i++) {
@@ -253,18 +265,28 @@ export class BufferWrap<T extends WrapperStruct> {
       return;
     }
 
+    // Struct of typed arrays (BufferList-style)
     for (const key in data) {
       const value = data[key];
       if (!value) continue;
+
       const type = this.config.types[key];
       const len = this.config.struct[key];
       const offset = this.config.offsets[key];
 
-      for (let i = 0; i < len; i++) {
-        this.view.setUint8(
-          idx * this._stride + offset + i * type.BYTES_PER_ELEMENT,
-          value[i]
+      if (!(value instanceof type)) {
+        throw new Error(
+          `Expected ${type.name} for key "${key}", but got ${value.constructor.name}`
         );
+      }
+
+      for (let i = 0; i < len; i++) {
+        const byteOffset =
+          idx * this._stride + offset + i * type.BYTES_PER_ELEMENT;
+        console.log(
+          `WRITE: key=${key}, i=${i}, offset=${byteOffset}, val=${value[i]}`
+        );
+        this.writeData(type, byteOffset, value[i]);
       }
     }
   }
@@ -333,6 +355,7 @@ export class BufferWrap<T extends WrapperStruct> {
     const offset = this.config.offsets[key] + index * this._stride;
     const len = this.config.struct[key];
     const type = this.config.types[key];
+    console.log(`READ: key=${key as string}, offset=${offset}, index=${index}`);
 
     if (len === 1) {
       return this.readData(type, offset);
@@ -420,4 +443,8 @@ export class BufferWrap<T extends WrapperStruct> {
         throw new Error("Unsupported type");
     }
   }
+}
+
+function alignOffset(offset: number, alignment: number): number {
+  return Math.ceil(offset / alignment) * alignment;
 }

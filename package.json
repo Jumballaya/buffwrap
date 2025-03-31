@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "test": "jest"
+    "test": "jest --verbose --silent=false"
   },
   "keywords": [],
   "author": "",
