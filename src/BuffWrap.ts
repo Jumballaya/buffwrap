@@ -1,10 +1,12 @@
 import type {
   ArrayType,
   BufferList,
+  TypedArrayConstructor,
   WrapperConfig,
   WrapperConfigOffsets,
   WrapperStruct,
   WrapperStructCompiled,
+  WrapperStructTypesConfig,
 } from "./types";
 
 //
@@ -14,18 +16,18 @@ import type {
 //    This could be particles in a particle system, messages passed from
 //    web workers, information from a WebGPU compute pipeline, lighting
 //    data in a uniform buffer, etc. etc.
+//
+//    @TODO: use the DataView 'view' attribute instead of the 'buffer' ArrayBuffer
+//           attribute wherever possible. This is to make sure a BufferWrap created
+//           from a .slice() call works as intended.
 export class BufferWrap<T extends WrapperStruct> {
   private config: WrapperConfig<T> & WrapperConfigOffsets<T>;
-  private map: Map<number, WrapperStructCompiled<T>> = new Map();
+  private proxyCache: Map<number, WrapperStructCompiled<T>> = new Map();
   private buffers: BufferList<T> = {} as BufferList<T>; // @TODO: better typing
   public buffer: ArrayBuffer;
-  private stride = 0;
+  private view: DataView;
+  private _stride = 0;
 
-  //
-  //
-  //  BufferWrap constructor
-  //
-  //
   constructor(config: WrapperConfig<T>) {
     const offsets: Record<string, number> = {};
     let stride = 0;
@@ -33,70 +35,57 @@ export class BufferWrap<T extends WrapperStruct> {
       offsets[k] = stride;
       stride += config.struct[k] * config.types[k].BYTES_PER_ELEMENT;
     }
-    this.stride = stride;
+    this._stride = stride;
 
     this.config = {
       ...config,
       offsets: offsets as { [k in keyof T]: number },
     };
 
-    const byteLength = this.stride * config.capacity;
+    const byteLength = this._stride * config.capacity;
     this.buffer = new ArrayBuffer(byteLength);
+    this.view = new DataView(this.buffer);
   }
 
-  //
-  // Get an instance of the struct at index `idx`
-  //
-  // This build and caches a plain object with a
-  // setter and getter for each of the attribute
-  // fields. This will give the user an interface to
-  // update and read just a single instance
-  public at(idx: number) {
-    //
-    // If we found the cached entry, just send it
-    // The closure has everything it needs, so this
-    // will only need to be ran once for each entry
-    const found = this.map.get(idx);
+  public get byteLength(): number {
+    return this.view.byteLength;
+  }
+
+  public get stride(): number {
+    return this.stride;
+  }
+
+  public attributeStride(name: string): number {
+    const key = name as keyof T;
+    if (key in this.config.types) {
+      return this.config.types[key].BYTES_PER_ELEMENT * this.config.struct[key];
+    }
+    return 0;
+  }
+
+  // Generates a proxy object that represents your struct at
+  // the given index. updating this proxy will update the
+  // underlying buffer
+  public at(idx: number): WrapperStructCompiled<T> {
+    let found = this.proxyCache.get(idx);
     if (found) {
       return found;
     }
 
-    const _getAttr = this.getElementAttribute.bind(this); // @TODO: Find a better way to build the attributes to avoid this
-    const _setAttr = this.setElementAttribute.bind(this); // @TODO: Find a better way to build the attributes to avoid this
-
-    //
-    // Create an array of objects where the key
-    // is each of the keys of the struct and the
-    // value for each key is a pair of getters/setters.
-    const attributes = Object.keys(this.config.struct).map((k: keyof T) => {
-      const out = {
-        get [k](): number | number[] {
-          return _getAttr(k, idx);
-        },
-        set [k](v: number | number[]) {
-          _setAttr(k, v, idx);
-        },
-      } as { [k in keyof T]: T[k] };
-      return out;
-    }) satisfies Array<{ [k in keyof T]: T[k] }>;
-
-    //
-    //  Fold the array above into a single object.
-    //  This is all done to preserve the getters/setters
-    const obj: WrapperStructCompiled<T> = attributes.reduce(
-      (res, attribute) => {
-        Object.defineProperties(
-          res,
-          (Object as any).getOwnPropertyDescriptors(attribute) // @TODO: Fix typing
-        );
-        return res;
+    found = new Proxy({} as WrapperStructCompiled<T>, {
+      get: (_, key: string) => {
+        if (!(key in this.config.struct)) return undefined;
+        return this.getElementAttribute(key as keyof T, idx);
       },
-      {} as WrapperStructCompiled<T>
-    );
+      set: (_, key: string, value) => {
+        if (!(key in this.config.struct)) return false;
+        this.setElementAttribute(key as keyof T, value, idx);
+        return true;
+      },
+    });
 
-    // Cache the object and return it
-    this.map.set(idx, obj);
-    return obj;
+    this.proxyCache.set(idx, found);
+    return found;
   }
 
   //
@@ -115,12 +104,14 @@ export class BufferWrap<T extends WrapperStruct> {
     const buffer = new type(len * this.config.capacity);
 
     for (let i = 0; i < this.config.capacity; i++) {
-      const start = this.stride * i + offset;
+      const start = this._stride * i + offset;
       const end = start + len * type.BYTES_PER_ELEMENT;
       buffer.set(new type(this.buffer.slice(start, end)), i * len);
     }
 
-    this.buffers[key] = buffer;
+    this.buffers[key] = buffer as InstanceType<
+      WrapperStructTypesConfig<T>[typeof key]
+    >;
     return buffer;
   }
 
@@ -134,14 +125,14 @@ export class BufferWrap<T extends WrapperStruct> {
     // Actual ArrayBuffer class
     if (buffer instanceof ArrayBuffer) {
       this.buffer = buffer.slice();
-      this.map.clear();
+      this.proxyCache.clear();
       return;
     }
 
     // TypedArray (e.g. Float32Array, Uint8Array, etc.)
     if (buffer.buffer) {
       this.buffer = buffer.buffer.slice().buffer;
-      this.map.clear();
+      this.proxyCache.clear();
       return;
     }
 
@@ -149,7 +140,7 @@ export class BufferWrap<T extends WrapperStruct> {
     const keys: Array<keyof T> = Object.keys(buffer);
     for (const k of keys) {
       const inDataBuffer = buffer[k]!;
-      const stride = this.stride;
+      const stride = this._stride;
       const offset = this.config.offsets[k];
       const type = this.config.types[k];
       const len = this.config.struct[k];
@@ -166,12 +157,63 @@ export class BufferWrap<T extends WrapperStruct> {
       }
     }
 
-    this.map.clear();
+    this.proxyCache.clear();
+  }
+
+  // Move an element from one location to another.
+  // You can do somehing like .move(struct, 10) which would move your struct to
+  // the index 10 and that would be reflected in the underlying data buffer
+  // or you can do something like .move(42, 10) which will move the struct
+  // data at index 42 to index 10
+  public move(fromId: number | WrapperStructCompiled<T>, toId: number) {
+    if (fromId === toId) return;
+
+    const from =
+      typeof fromId === "number"
+        ? fromId
+        : [...this.proxyCache.entries()].find(([, v]) => v === fromId)?.[0];
+    if (from === undefined || from === toId) return;
+
+    const fromStart = from * this._stride;
+    const toStart = toId * this._stride;
+
+    for (let i = 0; i < this._stride; i++) {
+      const byte = this.view.getUint8(fromStart + i);
+      this.view.setUint8(toStart + i, byte);
+    }
+
+    const proxy = this.proxyCache.get(from);
+    if (proxy) {
+      this.proxyCache.set(toId, proxy);
+      this.proxyCache.delete(from);
+    }
+  }
+
+  public slice(start: number, end = this.config.capacity) {
+    const config = { ...this.config, capacity: end - start };
+    const bw = new BufferWrap<T>(config);
+
+    bw.buffer = this.buffer;
+    bw.view = this.view;
+
+    bw.config.offsets = Object.fromEntries(
+      Object.entries(this.config.offsets).map(([key, offset]) => [
+        key as keyof T,
+        offset + start * this._stride,
+      ])
+    ) as { [k in keyof T]: number };
+
+    return bw;
+  }
+
+  public *iterate(): Generator<WrapperStructCompiled<T>, void, unknown> {
+    for (let i = 0; i < this.config.capacity; i++) {
+      yield this.at(i);
+    }
   }
 
   // @TODO: Think about the following methods:
   //
-  //      slice    (create a BuffWrapSlice)
   //      insert   (insert a list of structs at an index, given a buffer, a struct of buffers, another BuffWrap or a BuffWrapSlice)
   //      copyInto (copies data into a struct of buffers, a single buffer, into another BuffWrap, or a BuffWrapSlice)
   //
@@ -181,18 +223,19 @@ export class BufferWrap<T extends WrapperStruct> {
   //
 
   private getElementAttribute(key: keyof T, index: number): number | number[] {
-    const offset = this.config.offsets[key];
+    const offset = this.config.offsets[key] + index * this._stride;
     const len = this.config.struct[key];
-    const startByte = index * this.stride + offset;
-    const endByte = startByte + len * this.config.types[key].BYTES_PER_ELEMENT;
-    const buffer = new this.config.types[key](
-      this.buffer.slice(startByte, endByte)
-    );
+    const type = this.config.types[key];
 
     if (len === 1) {
-      return buffer[0];
+      return this.readData(type, offset);
     }
-    return Array.from(buffer);
+
+    const result: number[] = [];
+    for (let i = 0; i < len; i++) {
+      result.push(this.readData(type, offset + i * type.BYTES_PER_ELEMENT));
+    }
+    return result;
   }
 
   private setElementAttribute(
@@ -200,20 +243,74 @@ export class BufferWrap<T extends WrapperStruct> {
     v: number | number[],
     index: number
   ) {
-    const offset = this.config.offsets[key];
-    const value = new this.config.types[key](typeof v === "number" ? [v] : v);
-    const startByte = index * this.stride + offset;
+    const offset = this.config.offsets[key] + index * this._stride;
+    const type = this.config.types[key];
 
-    // make sure to update the main buffer
-    new Uint8Array(this.buffer, 0, this.buffer.byteLength).set(
-      new Uint8Array(value.buffer),
-      startByte
-    );
+    if (typeof v === "number") {
+      this.writeData(type, offset, v);
+    } else {
+      for (let i = 0; i < v.length; i++) {
+        this.writeData(type, offset + i * type.BYTES_PER_ELEMENT, v[i]);
+      }
+    }
 
-    // as well as to update the individual attribute buffer
+    // Update the attribute buffer if it exists
     if (this.buffers[key]) {
-      const attrOffset = index * value.length;
-      this.buffers[key].set(value, attrOffset);
+      const attrOffset = index * (typeof v === "number" ? 1 : v.length);
+      this.buffers[key].set(typeof v === "number" ? [v] : v, attrOffset);
+    }
+  }
+
+  private readData(type: TypedArrayConstructor, offset: number): number {
+    switch (type) {
+      case Float32Array:
+        return this.view.getFloat32(offset, true);
+      case Uint8Array:
+        return this.view.getUint8(offset);
+      case Int8Array:
+        return this.view.getInt8(offset);
+      case Uint16Array:
+        return this.view.getUint16(offset, true);
+      case Int16Array:
+        return this.view.getInt16(offset, true);
+      case Uint32Array:
+        return this.view.getUint32(offset, true);
+      case Int32Array:
+        return this.view.getInt32(offset, true);
+      default:
+        throw new Error("Unsupported type");
+    }
+  }
+
+  private writeData(
+    type: TypedArrayConstructor,
+    offset: number,
+    value: number
+  ) {
+    switch (type) {
+      case Float32Array:
+        this.view.setFloat32(offset, value, true);
+        break;
+      case Uint8Array:
+        this.view.setUint8(offset, value);
+        break;
+      case Int8Array:
+        this.view.setInt8(offset, value);
+        break;
+      case Uint16Array:
+        this.view.setUint16(offset, value, true);
+        break;
+      case Int16Array:
+        this.view.setInt16(offset, value, true);
+        break;
+      case Uint32Array:
+        this.view.setUint32(offset, value, true);
+        break;
+      case Int32Array:
+        this.view.setInt32(offset, value, true);
+        break;
+      default:
+        throw new Error("Unsupported type");
     }
   }
 }

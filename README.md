@@ -3,11 +3,17 @@
 BufferWrap makes it easy to deal with a buffer of structured data. This could be particles in a particle system, messages passed from web workers, information from a WebGPU compute pipeline, lighting data in a uniform buffer, etc. etc.
 
 # TODO
+
 1. Add the id to the proxied struct
 2. Add the ability to move data from one index to another, preserving the already existing links. (BufferWrap.move(idxA, idxB) or BufferWrap.move(proxy, toIdx))
 3. Add more examples and patterns (like a BufferWrap manager that sits over a BufferWrap instance)
 4. Add a `byteLength() => number`, `.stride() => number` and `.attributeStride(attr: string) => number` methods
 5. Add a function that returns a generator that iterates through the items so it can be used with `for (x in buffer.iterate()) { ... }` or something
+
+Test ideas:
+
+1. make sure that the when a BufferWrap is sliced that both the original and the new BufferWrap have the same data, you should be able to change one and see it reflected elsewhere
+2.
 
 ## Examples
 

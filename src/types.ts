@@ -26,14 +26,7 @@ export type WrapperStruct = {
 };
 
 export type BufferList<T extends WrapperStruct> = {
-  [k in keyof T]:
-    | Float32Array
-    | Uint8Array
-    | Int8Array
-    | Uint16Array
-    | Int16Array
-    | Uint32Array
-    | Int32Array; // TypedArray type
+  [K in keyof T]?: InstanceType<WrapperStructTypesConfig<T>[K]>;
 };
 
 export type ArrayType =
@@ -44,6 +37,15 @@ export type ArrayType =
   | Int16Array
   | Uint32Array
   | Int32Array;
+
+export type TypedArrayConstructor =
+  | typeof Float32Array
+  | typeof Uint8Array
+  | typeof Int8Array
+  | typeof Uint16Array
+  | typeof Int16Array
+  | typeof Uint32Array
+  | typeof Int32Array;
 
 export type Vec<T extends number> = T extends 1
   ? number
