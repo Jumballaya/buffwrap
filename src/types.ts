@@ -10,7 +10,7 @@ export type WrapperStructTypesConfig<T extends WrapperStruct> = {
     | typeof Uint16Array
     | typeof Int16Array
     | typeof Uint32Array
-    | typeof Int32Array; // TypedArray Constructor type
+    | typeof Int32Array;
 };
 
 export type WrapperStructCompiled<T extends WrapperStruct> = {

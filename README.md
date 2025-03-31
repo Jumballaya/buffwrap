@@ -1,97 +1,208 @@
-# BuffWrap
+# BufferWrap
 
-BufferWrap makes it easy to deal with a buffer of structured data. This could be particles in a particle system, messages passed from web workers, information from a WebGPU compute pipeline, lighting data in a uniform buffer, etc. etc.
+**BufferWrap** is a TypeScript library for managing a pool of structured data inside an `ArrayBuffer`. It enables high-performance operations on binary memory, making it ideal for graphics engines, physics simulations, GPU compute pipelines, and more.
 
-# TODO
+---
 
-1. Add the id to the proxied struct
-2. Add the ability to move data from one index to another, preserving the already existing links. (BufferWrap.move(idxA, idxB) or BufferWrap.move(proxy, toIdx))
-3. Add more examples and patterns (like a BufferWrap manager that sits over a BufferWrap instance)
-4. Add a `byteLength() => number`, `.stride() => number` and `.attributeStride(attr: string) => number` methods
-5. Add a function that returns a generator that iterates through the items so it can be used with `for (x in buffer.iterate()) { ... }` or something
+## Features
 
-Test ideas:
+- Proxy-based access to structs backed by a shared `ArrayBuffer`
+- Efficient memory manipulation using `DataView` and `TypedArray.set()`
+- Dynamic insertion, slicing, moving, and copying of struct data
+- Supports bulk hydration from binary formats or structured buffers
+- Minimal allocations and maximum performance
 
-1. make sure that the when a BufferWrap is sliced that both the original and the new BufferWrap have the same data, you should be able to change one and see it reflected elsewhere
-2.
+---
 
-## Examples
+## Installation
 
-### Basic
-
-#### Generate Vertex Data
-
-```ts
-type VertexStruct = {
-  position: [number, number, number];
-  texCoord: [number, number];
-  normal: [number, number, number];
-};
-
-const quadWrapper = new BufferWrap<VertexStruct>({
-  types: {
-    position: Float32Array,
-    texCoord: Float32Array,
-    normal: Float32Array,
-  },
-  capacity: 4,
-  struct: {
-    position: 3,
-    texCoord: 2,
-    normal: 3,
-  },
-});
-
-quadWrapper.at(0).position = [-1, -1, 0];
-quadWrapper.at(1).position = [1, -1, 0];
-quadWrapper.at(2).position = [1, 1, 0];
-quadWrapper.at(3).position = [-1, 1, 0];
-
-quadWrapper.at(0).texCoord = [0, 0];
-quadWrapper.at(1).texCoord = [1, 0];
-quadWrapper.at(2).texCoord = [1, 1];
-quadWrapper.at(3).texCoord = [0, 1];
-
-quadWrapper.at(0).normal = [0, 0, 1];
-quadWrapper.at(1).normal = [0, 0, 1];
-quadWrapper.at(2).normal = [0, 0, 1];
-quadWrapper.at(3).normal = [0, 0, 1];
+```bash
+npm install buffwrap
 ```
 
-#### Manage particles in a particle system
+---
+
+## Getting Started
 
 ```ts
-type VertexStruct = {
-  position: [number, number, number];
-  texCoord: [number, number];
-  normal: [number, number, number];
+import { BufferWrap } from "buffwrap";
+
+const struct = {
+  position: 3,
+  velocity: 3,
 };
 
-const particleWrapper = new BufferWrap<VertexStruct>({
-  types: {
-    position: Float32Array,
-    rotation: Float32Array,
-    color: Float32Array,
-    maxLife: Float32Array,
-    curLife: Float32Array,
-  },
-  capacity: 1000,
-  struct: {
-    position: 3,
-    rotation: 4,
-    color: 4,
-    maxLife: 1,
-    curLife: 1,
-  },
-});
+const types = {
+  position: Float32Array,
+  velocity: Float32Array,
+};
 
-for (let i = 0; i < 1000; i++) {
-  particleWrapper.at(i).position = [
-    Math.random(),
-    Math.random(),
-    Math.random(),
-    1,
-  ];
-  // ... etc
+const buffer = new BufferWrap({ struct, types, capacity: 100 });
+
+const e = buffer.at(0);
+e.position = [1.0, 2.0, 3.0];
+e.velocity = [0.5, 0.5, 0.0];
+
+console.log(e.position); // [1.0, 2.0, 3.0]
+```
+
+---
+
+## API Overview
+
+### Constructor
+
+```ts
+new BufferWrap<T>(config: WrapperConfig<T>)
+```
+
+### Methods
+
+| Method                     | Description                                               |
+| -------------------------- | --------------------------------------------------------- |
+| `.at(index)`               | Access a struct proxy at given index                      |
+| `.getAttributeBuffer(key)` | Get a typed array of a specific attribute                 |
+| `.from(buffer)`            | Hydrate from binary buffer or attribute buffers           |
+| `.move(from, to)`          | Move struct data from one index to another                |
+| `.slice(start, end)`       | Create a new view sharing memory with the original buffer |
+| `.insert(index, data)`     | Insert data into buffer, with automatic resizing          |
+| `.copyInto(target)`        | Copy data into another buffer or BufferWrap               |
+| `.iterate()`               | Iterate all elements in the buffer                        |
+
+### Properties
+
+| Property               | Description                       |
+| ---------------------- | --------------------------------- |
+| `buffer`               | The underlying ArrayBuffer        |
+| `byteLength`           | Total byte size of the buffer     |
+| `stride`               | Byte size per struct              |
+| `attributeStride(key)` | Byte size of a specific attribute |
+
+---
+
+## Example Use Cases
+
+- Game engine entity/component systems
+- Particle system simulation
+- WebGPU/WebGL instance buffer management
+- SharedArrayBuffer data pooling
+- Networked multiplayer data hydration
+
+---
+
+# **BufferWrap Documentation**
+
+Install via npm:
+
+```sh
+npm install buffwrap
+```
+
+Import into your TypeScript or JavaScript project:
+
+```ts
+import { BufferWrap } from "buffwrap";
+```
+
+---
+
+## **Class: `BufferWrap<T>`**
+
+### **Constructor**
+
+```ts
+constructor(config: WrapperConfig<T>)
+```
+
+- Initializes a new `BufferWrap` with a specified structure and type configuration.
+- **Parameters**:
+  - `config`: Defines the structure, types, and capacity of the buffer.
+
+---
+
+## **Methods**
+
+### **1. `at(idx: number): WrapperStructCompiled<T>`**
+
+```ts
+const entity = buffer.at(5);
+entity.position = [1.0, 2.0, 3.0];
+```
+
+- Returns a **proxy object** representing the struct at a given index.
+- Accessing properties reads from the buffer, and setting them writes to the buffer.
+
+---
+
+### **2. `getAttributeBuffer(key: keyof T): ArrayType`**
+
+```ts
+const positions = buffer.getAttributeBuffer("position");
+```
+
+- Returns a **separate buffer** containing only the specified attribute data.
+
+---
+
+### **3. `from(data: ArrayBuffer | Partial<BufferList<T>>): void`**
+
+```ts
+buffer.from(anotherArrayBuffer);
+```
+
+- Populates the buffer from an existing `ArrayBuffer` or a structured buffer list.
+
+---
+
+### **4. `move(from: number | WrapperStructCompiled<T>, to: number): void`**
+
+```ts
+buffer.move(5, 10);
+```
+
+- Moves the struct at index `from` to index `to`, preserving the underlying memory structure.
+
+---
+
+### **5. `slice(start: number, end?: number): BufferWrap<T>`**
+
+```ts
+const subBuffer = buffer.slice(10, 20);
+```
+
+- Creates a **new `BufferWrap` instance that shares memory** with the original buffer.
+
+---
+
+### **6. `insert(idx: number, data: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>): void`**
+
+```ts
+buffer.insert(2, { position: [3.0, 4.0, 5.0], velocity: [0.1, 0.2, 0.3] });
+```
+
+- Inserts new elements into the buffer, resizing if necessary.
+
+---
+
+### **7. `copyInto(target: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>): void`**
+
+```ts
+const newBuffer = new ArrayBuffer(buffer.byteLength);
+buffer.copyInto(newBuffer);
+```
+
+- Copies the data from this `BufferWrap` into another buffer.
+
+---
+
+### **8. `iterate(): Generator<WrapperStructCompiled<T>>`**
+
+```ts
+for (const entity of buffer.iterate()) {
+  console.log(entity.position);
 }
 ```
+
+- Iterates over all elements in the buffer.
+
+---

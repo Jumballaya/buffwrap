@@ -177,10 +177,9 @@ export class BufferWrap<T extends WrapperStruct> {
     const fromStart = from * this._stride;
     const toStart = toId * this._stride;
 
-    for (let i = 0; i < this._stride; i++) {
-      const byte = this.view.getUint8(fromStart + i);
-      this.view.setUint8(toStart + i, byte);
-    }
+    new Uint8Array(this.buffer, toStart, this._stride).set(
+      new Uint8Array(this.buffer, fromStart, this._stride)
+    );
 
     const proxy = this.proxyCache.get(from);
     if (proxy) {
@@ -206,17 +205,125 @@ export class BufferWrap<T extends WrapperStruct> {
     return bw;
   }
 
+  // if you dont insert an ArrayBuffer, the assumption is you are inserting
+  // only 1 element
+  public insert(
+    idx: number,
+    data: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>
+  ) {
+    const insertCount = data instanceof BufferWrap ? data.config.capacity : 1;
+    const requiredCapacity = this.config.capacity + insertCount;
+    this.config.capacity = requiredCapacity;
+
+    if (requiredCapacity * this._stride > this.buffer.byteLength) {
+      const newBufferSize = Math.max(
+        this.byteLength * 2,
+        requiredCapacity * this._stride
+      );
+      const newBuffer = new ArrayBuffer(newBufferSize);
+      new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
+      this.buffer = newBuffer;
+      this.view = new DataView(newBuffer);
+    }
+
+    // just moving everything forward from where were want to insert
+    for (let i = this.config.capacity - 1; i >= idx; i--) {
+      const fromOffset = i * this._stride;
+      const toOffset = (i + insertCount) * this._stride;
+      new Uint8Array(this.buffer, toOffset, this._stride).set(
+        new Uint8Array(this.buffer, fromOffset, this._stride)
+      );
+    }
+
+    if (data instanceof BufferWrap) {
+      for (let i = 0; i < data.config.capacity; i++) {
+        const fromOffset = i * data._stride;
+        const toOffset = (idx + i) * this._stride;
+        new Uint8Array(this.buffer, toOffset, this._stride).set(
+          new Uint8Array(data.buffer, fromOffset, this._stride)
+        );
+      }
+      return;
+    }
+
+    if (data instanceof ArrayBuffer) {
+      new Uint8Array(this.buffer, idx * this._stride, data.byteLength).set(
+        new Uint8Array(data)
+      );
+      return;
+    }
+
+    for (const key in data) {
+      const value = data[key];
+      if (!value) continue;
+      const type = this.config.types[key];
+      const len = this.config.struct[key];
+      const offset = this.config.offsets[key];
+
+      for (let i = 0; i < len; i++) {
+        this.view.setUint8(
+          idx * this._stride + offset + i * type.BYTES_PER_ELEMENT,
+          value[i]
+        );
+      }
+    }
+  }
+
+  public copyInto(
+    target: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>
+  ) {
+    if (target instanceof ArrayBuffer) {
+      if (target.byteLength < this.buffer.byteLength) {
+        throw new Error(
+          "Target ArrayBuffer is too small to hold the copied data"
+        );
+      }
+      new Uint8Array(target).set(new Uint8Array(this.buffer));
+      return;
+    }
+
+    if (target instanceof BufferWrap) {
+      if (target.config.capacity < this.config.capacity) {
+        throw new Error(
+          "Target BufferWrap is too small to hold the copied data"
+        );
+      }
+      for (let i = 0; i < this.config.capacity; i++) {
+        const fromOffset = i * this._stride;
+        const toOffset = i * target._stride;
+        new Uint8Array(target.buffer, toOffset, this._stride).set(
+          new Uint8Array(this.buffer, fromOffset, this._stride)
+        );
+      }
+      return;
+    }
+
+    for (const k in target) {
+      const buffer = target[k];
+      if (!buffer) continue;
+
+      const type = this.config.types[k];
+      const len = this.config.struct[k];
+      const offset = this.config.offsets[k];
+
+      const bufferView = new Uint8Array(buffer.buffer);
+
+      for (let i = 0; i < this.config.capacity; i++) {
+        const srcOffset = i * this._stride + offset;
+        const dstOffset = i * len * type.BYTES_PER_ELEMENT;
+        bufferView.set(
+          new Uint8Array(this.buffer, srcOffset, len * type.BYTES_PER_ELEMENT),
+          dstOffset
+        );
+      }
+    }
+  }
+
   public *iterate(): Generator<WrapperStructCompiled<T>, void, unknown> {
     for (let i = 0; i < this.config.capacity; i++) {
       yield this.at(i);
     }
   }
-
-  // @TODO: Think about the following methods:
-  //
-  //      insert   (insert a list of structs at an index, given a buffer, a struct of buffers, another BuffWrap or a BuffWrapSlice)
-  //      copyInto (copies data into a struct of buffers, a single buffer, into another BuffWrap, or a BuffWrapSlice)
-  //
 
   //
   // Private internal helper methods
