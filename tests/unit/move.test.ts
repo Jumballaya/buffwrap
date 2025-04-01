@@ -1,5 +1,5 @@
-import BufferWrap from "../dist";
-import { config, TestStruct } from "./helper";
+import BufferWrap from "../../dist";
+import { config, TestStruct } from "../helper";
 
 test("Move from one index to another", () => {
   const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 3 });

@@ -1,5 +1,5 @@
-import BufferWrap from "../dist";
-import { config, TestStruct } from "./helper";
+import BufferWrap from "../../dist";
+import { config, TestStruct } from "../helper";
 
 test("Loads from raw ArrayBuffer", () => {
   const source = new BufferWrap<TestStruct>({ ...config, capacity: 1 });

@@ -206,11 +206,3 @@ for (const entity of buffer.iterate()) {
 - Iterates over all elements in the buffer.
 
 ---
-
-Extend this to BufferWrap.sliceInto(...)
-Auto-generate offsets in a utility function for reusability
-Re-indexing proxies instead of clearing cache on a move/insert
-
-tests:
-Could also do deep slice chains, slice-insert, or slice-copyInto.
-simulating GPU-style pipelines

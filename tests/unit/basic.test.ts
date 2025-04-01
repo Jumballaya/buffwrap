@@ -1,5 +1,5 @@
-import BufferWrap from "../dist";
-import { config, TestStruct } from "./helper";
+import BufferWrap from "../../dist";
+import { config, TestStruct } from "../helper";
 
 test("Can set and get single and vector values", () => {
   const buffer = new BufferWrap<TestStruct>(config);

@@ -1,4 +1,4 @@
-import BufferWrap from "../dist";
+import BufferWrap from "../../dist";
 
 type VertexStruct = {
   position: [number, number, number];

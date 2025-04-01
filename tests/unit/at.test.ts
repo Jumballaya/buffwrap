@@ -1,5 +1,5 @@
-import BufferWrap from "../dist";
-import { config, TestStruct } from "./helper";
+import BufferWrap from "../../dist";
+import { config, TestStruct } from "../helper";
 
 test("Can access and modify simple scalar field", () => {
   const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 2 });
