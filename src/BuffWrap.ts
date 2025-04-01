@@ -83,7 +83,8 @@ export class BufferWrap<T extends WrapperStruct> {
   // the given index. updating this proxy will update the
   // underlying buffer
   public at(idx: number): WrapperStructCompiled<T> {
-    let found = this.proxyCache.get(idx);
+    const cacheKey = this.baseOffset + idx * this._stride;
+    let found = this.proxyCache.get(cacheKey);
     if (found) {
       return found;
     }
@@ -100,7 +101,9 @@ export class BufferWrap<T extends WrapperStruct> {
       },
     });
 
-    this.proxyCache.set(idx, found);
+    if (!this.proxyCache.has(cacheKey)) {
+      this.proxyCache.set(cacheKey, found);
+    }
 
     return found;
   }
@@ -188,25 +191,33 @@ export class BufferWrap<T extends WrapperStruct> {
   // or you can do something like .move(42, 10) which will move the struct
   // data at index 42 to index 10
   public move(fromId: number | WrapperStructCompiled<T>, toId: number) {
-    if (fromId === toId) return;
-
     const from =
       typeof fromId === "number"
         ? fromId
         : [...this.proxyCache.entries()].find(([, v]) => v === fromId)?.[0];
-    if (from === undefined || from === toId) return;
 
-    const fromStart = from * this._stride;
-    const toStart = toId * this._stride;
+    if (
+      from === undefined ||
+      from === toId ||
+      from < 0 ||
+      toId < 0 ||
+      from >= this.config.capacity ||
+      toId >= this.config.capacity
+    ) {
+      return;
+    }
+
+    const fromStart = this.baseOffset + from * this._stride;
+    const toStart = this.baseOffset + toId * this._stride;
 
     new Uint8Array(this.buffer, toStart, this._stride).set(
       new Uint8Array(this.buffer, fromStart, this._stride)
     );
 
-    const proxy = this.proxyCache.get(from);
+    const proxy = this.proxyCache.get(fromStart);
+    this.proxyCache.clear();
     if (proxy) {
-      this.proxyCache.set(toId, proxy);
-      this.proxyCache.delete(from);
+      this.proxyCache.set(toStart, proxy);
     }
   }
 
@@ -220,6 +231,7 @@ export class BufferWrap<T extends WrapperStruct> {
     const bw = new BufferWrap<T>(config);
     bw.view = this.view;
     bw.baseOffset = this.baseOffset + start * this._stride;
+    bw.proxyCache = this.proxyCache;
     return bw;
   }
 
@@ -253,6 +265,7 @@ export class BufferWrap<T extends WrapperStruct> {
     }
 
     this.config.capacity = requiredCapacity;
+    this.proxyCache.clear();
 
     if (data instanceof BufferWrap) {
       const sameStruct =
@@ -345,7 +358,7 @@ export class BufferWrap<T extends WrapperStruct> {
         );
       }
       for (let i = 0; i < this.config.capacity; i++) {
-        const fromOffset = i * this._stride;
+        const fromOffset = this.baseOffset + i * this._stride;
         const toOffset = i * target._stride;
         new Uint8Array(target.buffer, toOffset, this._stride).set(
           new Uint8Array(this.buffer, fromOffset, this._stride)
@@ -365,7 +378,7 @@ export class BufferWrap<T extends WrapperStruct> {
       const bufferView = new Uint8Array(buffer.buffer);
 
       for (let i = 0; i < this.config.capacity; i++) {
-        const srcOffset = i * this._stride + offset;
+        const srcOffset = this.baseOffset + i * this._stride + offset;
         const dstOffset = i * len * type.BYTES_PER_ELEMENT;
         bufferView.set(
           new Uint8Array(this.buffer, srcOffset, len * type.BYTES_PER_ELEMENT),
