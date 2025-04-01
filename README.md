@@ -51,53 +51,161 @@ buffer.at(0).b = [1.1, 2.2];
 
 ## 👥 Contributors
 
-- [@pburris](https://github.com/pburris)
 - Contributions welcome! Open an issue or PR 💡
 
 ---
 
-## 📘 API: `BufferWrap<T>` Class
+## 🧪 Running Tests & Local Development
 
-### **`constructor(config: WrapperConfig<T> & Partial<WrapperConfigOffsets<T>>)`**
+To run the BufferWrap test suite and work on the project locally:
 
-Creates a new instance of `BufferWrap` with the given struct and capacity.
+### 📥 Clone the Repository
 
-- Automatically computes layout and alignment.
-- Accepts an optional shared `ArrayBuffer`.
+```bash
+git clone https://github.com/Jumballaya/buffwrap.git
+cd buffwrap
+npm install
+```
+
+### 🧪 Run the Test Suite
+
+BufferWrap uses **Jest** for testing. The tests are located in the `tests/` directory and are organized by feature.
+
+```bash
+npm test
+```
+
+To run a specific test file:
+
+```bash
+npx jest tests/unit/slice.test.ts
+```
+
+Or a specific test name:
+
+```bash
+npx jest -t "swapped proxies are still valid"
+```
+
+### 💡 Watch Mode (Live Re-running)
+
+During development, you can use watch mode:
+
+```bash
+npx jest --watch
+```
+
+This will automatically re-run affected tests when files change.
+
+---
+
+### 📦 Building
+
+You need to build the library before the tests will run against your updates. The tests run against the built code in the /dist folder.
+
+```bash
+npm run build
+```
+
+---
+
+### 📂 Project Structure
+
+```txt
+src/
+  └─ BuffWrap.ts        # Main class
+  └─ index.ts           # Main entry to the library
+  └─ types.ts           # Core types used throughout
+
+tests/
+  └─ unit/              # Unit tests grouped by feature
+  └─ integration/       # Full lifecycle and cross-feature tests
+
+README.md               # This file
+package.json            # npm package config
+tsconfig.json           # typescript config
+jest.config.js          # jest testing config
+```
+
+Happy hacking!
+
+---
+
+## 📘 `BufferWrap<T>` API Reference
+
+### Constructor
+
+```ts
+new BufferWrap(config: WrapperConfig<T> & Partial<WrapperConfigOffsets<T>>)
+```
+
+### `WrapperConfig<T>`
+
+```ts
+{
+  capacity: number;
+  struct: {
+    [K in keyof T]: {
+      type: TypedArrayConstructor;
+      length: number;
+    };
+  };
+  alignment?: number;
+  buffer?: ArrayBuffer;
+}
+```
+
+### `WrapperConfigOffsets<T>`
+
+```ts
+{
+  offsets: {
+    [K in keyof T]: number;
+  };
+}
+```
+
+---
+
+### Public Properties
+
+- `buffer: ArrayBuffer` — the raw buffer
+- `stride: number` — total bytes per struct
+- `byteLength: number` — total byte length of the buffer
+
+---
+
+### Methods
 
 ---
 
 ### **`at(idx: number): WrapperStructCompiled<T>`**
 
 ```ts
-const item = buffer.at(3);
-item.a = 5;
+const item = buffer.at(0);
+item.id = 7;
 ```
 
-- Returns a proxy object for reading/writing values at a given logical index.
-- Proxies are cached internally and reused.
-- Tracked using `currentIndex` to ensure slice/index safety.
+- Returns a proxy for the struct at logical index `idx`.
 
-**Throws:**
+**Throws**
 
-- `at(): Index ${idx} is out of bounds` – When index is invalid.
+- `"at(): Index ${idx} is out of bounds"` — if `idx < 0 || idx >= capacity`
 
 ---
 
 ### **`move(from: number | WrapperStructCompiled<T>, to: number): void`**
 
 ```ts
-buffer.move(5, 10);
+buffer.move(0, 1);
 ```
 
-- Moves the struct at index `from` to `to`, preserving the underlying memory structure.
-- If a proxy is passed as `from`, it resolves the logical index using `currentIndex`.
-- Updates the proxy cache so the moved proxy stays valid.
-- Does nothing if `from === to`.
+- Moves one struct's data to another position.
 
-**Throws:**
+**Throws**
 
-- `move(): Indices out of bounds` – If either index is invalid.
+- `"move(): Source index not found."` — if `from` proxy cannot be resolved
+- `"move(): Indices out of bounds"` — if invalid indices
 
 ---
 
@@ -107,27 +215,23 @@ buffer.move(5, 10);
 buffer.swap(1, 2);
 ```
 
-- Swaps the binary data at two indices.
-- Updates proxy cache so that proxies retain identity.
-- `proxy.currentIndex` is updated internally.
+- Swaps data at `a` and `b`.
+- Proxies retain identity and are updated.
 
-**Throws:**
+**Throws**
 
-- `swap(): Indices out of bounds` – If either index is invalid.
+- `"swap(): Indices out of bounds"` — if either index is out of bounds
 
 ---
 
 ### **`slice(start: number, end?: number): BufferWrap<T>`**
 
 ```ts
-const sub = buffer.slice(2, 5);
+const slice = buffer.slice(0, 2);
 ```
 
-- Returns a new `BufferWrap` sharing the same underlying memory.
-- Maintains `baseOffset` to ensure correct offset math.
-- Shares proxy cache, so changes reflect across views.
-
-**Note:** Deep nesting is supported, but be cautious of overlapping access and lifetimes.
+- Creates a new BufferWrap that shares the same buffer.
+- Internally updates `baseOffset`.
 
 ---
 
@@ -137,42 +241,38 @@ const sub = buffer.slice(2, 5);
 buffer.insert(1, otherBuffer);
 ```
 
-- Inserts one or more structs into the buffer.
-- Works with:
-  - raw `ArrayBuffer`
-  - struct-like `{ a: Uint8Array, b: Float32Array }`
-  - another compatible `BufferWrap`
-- Shifts existing data to make space.
+- Inserts data into the buffer and shifts existing structs.
 
-**Throws:**
+**Throws**
 
-- `insert(): Index out of bounds`
-- `insert(): BufferWrap struct mismatch between source and target`
-- `insert(): Invalid type for field ...`
+- `"insert(): Index is out of bounds"`
+- `"insert(): BufferWrap struct mismatch"`
+- `"insert(): Invalid type for field ..."`
 
 ---
 
 ### **`copyInto(target: ArrayBuffer | BufferWrap<T> | BufferList<T>): void`**
 
 ```ts
-buffer.copyInto(targetBuffer);
+buffer.copyInto(destBuffer);
 ```
 
-- Copies data into another structure.
-- For `BufferWrap`, ensures compatibility before copying.
-- Can also copy to raw `ArrayBuffer` or an object of typed arrays.
+- Copies the entire buffer into another destination.
+
+**Throws**
+
+- `"Target BufferWrap is too small"`
+- `"Target ArrayBuffer is too small"`
 
 ---
 
 ### **`getAttributeBuffer(key: keyof T): ArrayType`**
 
 ```ts
-const positions = buffer.getAttributeBuffer("b");
+const ids = buffer.getAttributeBuffer("id");
 ```
 
-- Returns a typed array of a specific attribute.
-- Useful for uploading interleaved data to a GPU buffer.
-- Lazily computed and cached per attribute.
+- Returns a typed array for the specified attribute (e.g., all `id`s)
 
 ---
 
@@ -180,20 +280,11 @@ const positions = buffer.getAttributeBuffer("b");
 
 ```ts
 for (const item of buffer.iterate()) {
-  console.log(item.a);
+  console.log(item.id);
 }
 ```
 
-- Yields proxies for each struct in the buffer.
-- Fully respects slicing and `baseOffset`.
-
----
-
-### **Public Properties**
-
-- `buffer: ArrayBuffer` – The raw binary data.
-- `stride: number` – Total bytes per struct.
-- `byteLength: number` – Size of the underlying buffer.
+- Iterates over all structs, yielding proxies.
 
 ---
 
@@ -201,62 +292,89 @@ for (const item of buffer.iterate()) {
 
 ### 🔁 Proxy System
 
-- `at(idx)` returns a `Proxy` with traps for `get`/`set` to read/write buffer fields.
-- A `currentIndex` is embedded into each proxy to allow updates when moved/swapped.
-- Proxies are reused via `proxyCache`.
+- `at()` returns a proxy that maps property access to buffer memory.
+- Proxies store `currentIndex`, which allows updates when they're remapped (e.g., during `swap()`).
+- Proxies are cached using logical index as the key.
 
 ---
 
-### 🧩 Slices
+### 🧩 Slicing
 
-- `.slice(start, end)` returns a new BufferWrap sharing the same memory.
-- It maintains `baseOffset` so all reads/writes map correctly.
-- Deep slices are supported and safe.
+- `slice(start, end)` creates a new `BufferWrap` with:
+  - shared buffer
+  - updated `baseOffset`
+- Slices share the same `proxyCache`, meaning updates are reflected.
+- Slices are lightweight views — no memory is copied.
 
-**Pitfall:** Modifying overlapping slices can create logical confusion if proxy cache is not revalidated with `.at()`.
-
----
-
-### 🧼 Proxy Cache Lifecycle
-
-| Event       | Behavior                  |
-| ----------- | ------------------------- |
-| `.at(idx)`  | Creates or reuses a proxy |
-| `.move()`   | Updates proxy mapping     |
-| `.swap()`   | Updates both proxies      |
-| `.insert()` | Clears all proxies        |
-| `.from()`   | Clears all proxies        |
-| `.slice()`  | Shares parent cache       |
+**Pitfall**: If you create a slice, and modify a shared proxy across slices, be mindful of cache state.
 
 ---
 
-### ⚠️ ProxyCache Safety Rules
+### 💾 Buffer Types
 
-| Rule                                                     |
-| -------------------------------------------------------- |
-| Always access data via `.at(idx)`                        |
-| Never reuse proxies across `.insert()` or `.from()`      |
-| After `.move()` or `.swap()`, proxies are updated safely |
-| Shared slices use the same cache — changes are reflected |
-| Never mutate `proxy.currentIndex` manually               |
+BufferWrap supports:
 
----
-
-### 🔄 Buffer Sharing
-
-- Works with `ArrayBuffer`, `SharedArrayBuffer`, or any `TypedArray.buffer`
-- All `BufferWrap`s must use the same layout (`stride`, `offsets`)
-- Shared buffer means shared memory — changes are visible to all slices and instances
+| Type                | Supported? | Notes                              |
+| ------------------- | ---------- | ---------------------------------- |
+| `ArrayBuffer`       | ✅         | Default buffer type                |
+| `SharedArrayBuffer` | ✅         | Works as long as layout is shared  |
+| `TypedArray.buffer` | ✅         | Internally resolved to ArrayBuffer |
 
 ---
 
-### 📊 Comparison: `copyInto` vs `move` vs `swap`
+## 🧼 `proxyCache` Lifecycle
 
-| Method     | Copies? | Overwrites? | Proxy Update? | Use case                       |
-| ---------- | ------- | ----------- | ------------- | ------------------------------ |
-| `copyInto` | ✅      | ✅          | ❌            | Export data to external target |
-| `move`     | ✅      | ✅          | ✅            | Relocate a struct's data       |
-| `swap`     | 🔁      | 🔁          | ✅            | Exchange positions             |
+| Action     | Effect on proxyCache           |
+| ---------- | ------------------------------ |
+| `at()`     | Creates or reuses proxy        |
+| `swap()`   | Updates internal proxy mapping |
+| `move()`   | Remaps proxy to new index      |
+| `insert()` | Clears all proxies             |
+| `from()`   | Clears all proxies             |
+| `slice()`  | Shares parent's proxyCache     |
+
+---
+
+## ⚠️ Proxy Safety Rules
+
+| ✅ Do This                         | ❌ Avoid This                             |
+| ---------------------------------- | ----------------------------------------- |
+| Use `.at()` after `.insert()`      | Holding stale proxies across inserts      |
+| Regenerate proxies after `.from()` | Using proxies after slicing without `.at` |
+| Use `currentIndex` internally only | Mutating `currentIndex` directly          |
+
+---
+
+## 🧮 Logical vs Byte Offset
+
+- **Logical index**: passed to `.at()`, used in `proxyCache`
+- **Byte offset**: `baseOffset + stride * idx`, used for memory math
+
+---
+
+## 🔁 `copyInto` vs `move` vs `swap`
+
+| Method     | Operation       | Proxy Remap | Mutation Scope  |
+| ---------- | --------------- | ----------- | --------------- |
+| `copyInto` | Deep copy       | ❌          | External target |
+| `move`     | Copy & remap    | ✅          | Internal        |
+| `swap`     | Exchange values | ✅          | Internal        |
+
+---
+
+## 🔍 Error Reference
+
+| Message                                                             | Method        |
+| ------------------------------------------------------------------- | ------------- |
+| `"at(): Index ${idx} is out of bounds"`                             | `.at()`       |
+| `"move(): Source index not found."`                                 | `.move()`     |
+| `"move(): Indices out of bounds"`                                   | `.move()`     |
+| `"swap(): Indices out of bounds"`                                   | `.swap()`     |
+| `"insert(): Index is out of bounds"`                                | `.insert()`   |
+| `"insert(): BufferWrap struct mismatch between source and target."` | `.insert()`   |
+| `"insert(): Invalid type for field ..."`                            | `.insert()`   |
+| `"Target BufferWrap is too small"`                                  | `.copyInto()` |
+| `"Target ArrayBuffer is too small"`                                 | `.copyInto()` |
 
 ---
 
@@ -268,37 +386,86 @@ for (const item of buffer.iterate()) {
 
 ---
 
-## ❓ Q&A
+### 💡 Frequently Asked Questions
+
+---
 
 ### Why is `.at()` returning stale data?
 
-You may be reusing a proxy that was invalidated by `.insert()` or `.from()`. Always call `.at()` again after structural changes.
+Proxies can become stale after structural changes like `.insert()` or `.from()`. These operations clear the proxy cache, so any previously retrieved proxies may no longer reflect the correct buffer location. Always call `.at()` again after modifying the buffer structure.
+
+---
+
+### Why does my proxy stop updating after `insert()`?
+
+The `insert()` method shifts internal memory and clears the `proxyCache`, invalidating all proxies (including those in slices). To maintain correctness, re-access your item with `.at(index)` to get a new proxy.
+
+---
+
+### Why are there no proxies at some index?
+
+Proxies are created lazily — they only exist after you call `.at(index)`. If you're checking the internal `proxyCache`, don't be surprised if some entries are missing until accessed.
 
 ---
 
 ### Can I use `.from()` with a `SharedArrayBuffer`?
 
-Yes – just ensure the layout and offsets are identical. The buffer must have enough capacity.
+Yes, as long as the layout (stride, offsets, alignment) is compatible. Make sure the buffer has sufficient capacity, and remember that `SharedArrayBuffer` has some security restrictions in browsers (e.g., requires COOP/COEP headers).
+
+---
+
+### Can slices see changes in the original buffer?
+
+Yes. Slices are views over the same memory (`ArrayBuffer` or `SharedArrayBuffer`) and share the same internal `proxyCache`. Mutating one affects the other.
 
 ---
 
 ### What happens if I `.slice()` and then `.insert()`?
 
-`.insert()` will shift data and clear the proxy cache — so any old proxies (even in slices) may go stale. Call `.at()` again to ensure consistency.
+Inserting data will shift memory and **clear the proxy cache**. Any proxy, even those accessed from a slice, may become stale. Use `.at()` again to get a fresh and valid proxy.
 
 ---
 
-### When is `proxyCache` cleared?
+### How are vector types (like `Float32Array[3]`) supported?
 
-- After `.from()` or `.insert()`
-- Not after `.move()` or `.swap()` (proxies are remapped)
-- Slices share cache, so changes propagate
+Define the field in your struct like this:
+
+```ts
+b: { type: Float32Array, length: 3 }
+```
+
+BufferWrap will map it to a `float3`-style field. You can read/write arrays directly:
+
+```ts
+buffer.at(0).b = [1, 2, 3];
+```
 
 ---
 
-### Why use proxies at all?
+### When is the `proxyCache` cleared or reused?
 
-Proxies let you write structured values (`obj.a = 5`, `obj.b = [1, 2]`) directly into raw binary buffers, without managing `DataView` offsets yourself. They provide zero-cost abstraction over binary memory.
+| Operation   | Effect on `proxyCache`                |
+| ----------- | ------------------------------------- |
+| `.from()`   | Cleared (proxies stale)               |
+| `.insert()` | Cleared (proxies stale)               |
+| `.move()`   | Reused and remapped (proxies updated) |
+| `.swap()`   | Reused and remapped (proxies updated) |
+| `.slice()`  | Shares the same proxy cache           |
+
+Use `.at()` to regenerate proxies safely after cache invalidation.
+
+---
+
+### What’s the benefit of using proxies?
+
+Proxies let you interact with binary data using natural, object-like syntax. Instead of managing offsets manually via `DataView`, you can write:
+
+```ts
+buffer.at(3).a = 42;
+buffer.at(3).b = [1.0, 2.0];
+```
+
+This allows high performance without sacrificing developer ergonomics. It also makes slices, iteration, and copying logic much simpler to write and reason about.
 
 ---
 
