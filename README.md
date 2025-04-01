@@ -1,20 +1,28 @@
 # BufferWrap
 
-**BufferWrap** is a TypeScript library for managing a pool of structured data inside an `ArrayBuffer`. It enables high-performance operations on binary memory, making it ideal for graphics engines, physics simulations, GPU compute pipelines, and more.
+BufferWrap is a TypeScript library that simplifies working with structured binary data inside `ArrayBuffer`s. It provides a proxy-based interface over raw buffers, making it ideal for GPU-style data pipelines, interleaved memory formats, particle systems, WebGPU/WebGL data, and more.
+
+If you’re a developer building systems where performance and data layout matter, BufferWrap will save you time and eliminate bugs caused by manual memory handling. It offers the power of C-like struct access in JavaScript/TypeScript, with modern tools like generator-based iteration, lazy attribute extraction, and full support for shared memory.
 
 ---
 
-## Features
+## 🧭 What is this for?
 
-- Proxy-based access to structs backed by a shared `ArrayBuffer`
-- Efficient memory manipulation using `DataView` and `TypedArray.set()`
-- Dynamic insertion, slicing, moving, and copying of struct data
-- Supports bulk hydration from binary formats or structured buffers
-- Minimal allocations and maximum performance
+BufferWrap is designed for developers who need high-performance, structured memory access in JavaScript or TypeScript. If you're building:
+
+- A game engine with interleaved vertex attributes
+- A WebGPU/WebGL pipeline with UBOs or SSBOs
+- A physics simulation with spatially organized memory
+- A worker-threaded computation model using SharedArrayBuffer
+- A custom memory layout system (e.g., ECS, data-oriented design)
+
+...then BufferWrap gives you a fast, memory-efficient, and type-safe abstraction.
+
+It replaces verbose `DataView` and `TypedArray` logic with structured field access while preserving the performance of raw binary access.
 
 ---
 
-## Installation
+## 📦 Installation
 
 ```bash
 npm install buffwrap
@@ -22,206 +30,278 @@ npm install buffwrap
 
 ---
 
-## Getting Started
+## 🔧 Basic Usage
 
 ```ts
 import { BufferWrap } from "buffwrap";
 
-const struct = {
-  position: 3,
-  velocity: 3,
-};
+const buffer = new BufferWrap({
+  capacity: 10,
+  struct: {
+    a: { type: Uint8Array, length: 1 },
+    b: { type: Float32Array, length: 2 },
+  },
+});
 
-const types = {
-  position: Float32Array,
-  velocity: Float32Array,
-};
-
-const buffer = new BufferWrap({ struct, types, capacity: 100 });
-
-const e = buffer.at(0);
-e.position = [1.0, 2.0, 3.0];
-e.velocity = [0.5, 0.5, 0.0];
-
-console.log(e.position); // [1.0, 2.0, 3.0]
+buffer.at(0).a = 1;
+buffer.at(0).b = [1.1, 2.2];
 ```
 
 ---
 
-## API Overview
+## 👥 Contributors
 
-### Constructor
+- [@pburris](https://github.com/pburris)
+- Contributions welcome! Open an issue or PR 💡
+
+---
+
+## 📘 API: `BufferWrap<T>` Class
+
+### **`constructor(config: WrapperConfig<T> & Partial<WrapperConfigOffsets<T>>)`**
+
+Creates a new instance of `BufferWrap` with the given struct and capacity.
+
+- Automatically computes layout and alignment.
+- Accepts an optional shared `ArrayBuffer`.
+
+---
+
+### **`at(idx: number): WrapperStructCompiled<T>`**
 
 ```ts
-new BufferWrap<T>(config: WrapperConfig<T>)
+const item = buffer.at(3);
+item.a = 5;
 ```
 
-### Methods
+- Returns a proxy object for reading/writing values at a given logical index.
+- Proxies are cached internally and reused.
+- Tracked using `currentIndex` to ensure slice/index safety.
 
-| Method                     | Description                                               |
-| -------------------------- | --------------------------------------------------------- |
-| `.at(index)`               | Access a struct proxy at given index                      |
-| `.getAttributeBuffer(key)` | Get a typed array of a specific attribute                 |
-| `.from(buffer)`            | Hydrate from binary buffer or attribute buffers           |
-| `.move(from, to)`          | Move struct data from one index to another                |
-| `.slice(start, end)`       | Create a new view sharing memory with the original buffer |
-| `.insert(index, data)`     | Insert data into buffer, with automatic resizing          |
-| `.copyInto(target)`        | Copy data into another buffer or BufferWrap               |
-| `.iterate()`               | Iterate all elements in the buffer                        |
+**Throws:**
 
-### Properties
-
-| Property               | Description                       |
-| ---------------------- | --------------------------------- |
-| `buffer`               | The underlying ArrayBuffer        |
-| `byteLength`           | Total byte size of the buffer     |
-| `stride`               | Byte size per struct              |
-| `attributeStride(key)` | Byte size of a specific attribute |
+- `at(): Index ${idx} is out of bounds` – When index is invalid.
 
 ---
 
-## Example Use Cases
-
-- Game engine entity/component systems
-- Particle system simulation
-- WebGPU/WebGL instance buffer management
-- SharedArrayBuffer data pooling
-- Networked multiplayer data hydration
-
----
-
-# **BufferWrap Documentation**
-
-Install via npm:
-
-```sh
-npm install buffwrap
-```
-
-Import into your TypeScript or JavaScript project:
-
-```ts
-import { BufferWrap } from "buffwrap";
-```
-
----
-
-## **Class: `BufferWrap<T>`**
-
-### **Constructor**
-
-```ts
-constructor(config: WrapperConfig<T>)
-```
-
-- Initializes a new `BufferWrap` with a specified structure and type configuration.
-- **Parameters**:
-  - `config`: Defines the structure, types, and capacity of the buffer.
-
----
-
-## **Methods**
-
-### **1. `at(idx: number): WrapperStructCompiled<T>`**
-
-```ts
-const entity = buffer.at(5);
-entity.position = [1.0, 2.0, 3.0];
-```
-
-- Returns a **proxy object** representing the struct at a given index.
-- Accessing properties reads from the buffer, and setting them writes to the buffer.
-
----
-
-### **2. `getAttributeBuffer(key: keyof T): ArrayType`**
-
-```ts
-const positions = buffer.getAttributeBuffer("position");
-```
-
-- Returns a **separate buffer** containing only the specified attribute data.
-
----
-
-### **3. `from(data: ArrayBuffer | Partial<BufferList<T>>): void`**
-
-```ts
-buffer.from(anotherArrayBuffer);
-```
-
-- Populates the buffer from an existing `ArrayBuffer` or a structured buffer list.
-
----
-
-### **4. `move(from: number | WrapperStructCompiled<T>, to: number): void`**
+### **`move(from: number | WrapperStructCompiled<T>, to: number): void`**
 
 ```ts
 buffer.move(5, 10);
 ```
 
-- Moves the struct at index `from` to index `to`, preserving the underlying memory structure.
+- Moves the struct at index `from` to `to`, preserving the underlying memory structure.
+- If a proxy is passed as `from`, it resolves the logical index using `currentIndex`.
+- Updates the proxy cache so the moved proxy stays valid.
+- Does nothing if `from === to`.
+
+**Throws:**
+
+- `move(): Indices out of bounds` – If either index is invalid.
 
 ---
 
-### **5. `slice(start: number, end?: number): BufferWrap<T>`**
+### **`swap(a: number, b: number): void`**
 
 ```ts
-const subBuffer = buffer.slice(10, 20);
+buffer.swap(1, 2);
 ```
 
-- Creates a **new `BufferWrap` instance that shares memory** with the original buffer.
+- Swaps the binary data at two indices.
+- Updates proxy cache so that proxies retain identity.
+- `proxy.currentIndex` is updated internally.
+
+**Throws:**
+
+- `swap(): Indices out of bounds` – If either index is invalid.
 
 ---
 
-### **6. `insert(idx: number, data: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>): void`**
+### **`slice(start: number, end?: number): BufferWrap<T>`**
 
 ```ts
-buffer.insert(2, { position: [3.0, 4.0, 5.0], velocity: [0.1, 0.2, 0.3] });
+const sub = buffer.slice(2, 5);
 ```
 
-- Inserts new elements into the buffer, resizing if necessary.
+- Returns a new `BufferWrap` sharing the same underlying memory.
+- Maintains `baseOffset` to ensure correct offset math.
+- Shares proxy cache, so changes reflect across views.
+
+**Note:** Deep nesting is supported, but be cautious of overlapping access and lifetimes.
 
 ---
 
-### **7. `copyInto(target: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>): void`**
+### **`insert(idx: number, data: ArrayBuffer | BufferList<T> | BufferWrap<T>): void`**
 
 ```ts
-const newBuffer = new ArrayBuffer(buffer.byteLength);
-buffer.copyInto(newBuffer);
+buffer.insert(1, otherBuffer);
 ```
 
-- Copies the data from this `BufferWrap` into another buffer.
+- Inserts one or more structs into the buffer.
+- Works with:
+  - raw `ArrayBuffer`
+  - struct-like `{ a: Uint8Array, b: Float32Array }`
+  - another compatible `BufferWrap`
+- Shifts existing data to make space.
+
+**Throws:**
+
+- `insert(): Index out of bounds`
+- `insert(): BufferWrap struct mismatch between source and target`
+- `insert(): Invalid type for field ...`
 
 ---
 
-### **8. `iterate(): Generator<WrapperStructCompiled<T>>`**
+### **`copyInto(target: ArrayBuffer | BufferWrap<T> | BufferList<T>): void`**
 
 ```ts
-for (const entity of buffer.iterate()) {
-  console.log(entity.position);
+buffer.copyInto(targetBuffer);
+```
+
+- Copies data into another structure.
+- For `BufferWrap`, ensures compatibility before copying.
+- Can also copy to raw `ArrayBuffer` or an object of typed arrays.
+
+---
+
+### **`getAttributeBuffer(key: keyof T): ArrayType`**
+
+```ts
+const positions = buffer.getAttributeBuffer("b");
+```
+
+- Returns a typed array of a specific attribute.
+- Useful for uploading interleaved data to a GPU buffer.
+- Lazily computed and cached per attribute.
+
+---
+
+### **`iterate(): Generator<WrapperStructCompiled<T>>`**
+
+```ts
+for (const item of buffer.iterate()) {
+  console.log(item.a);
 }
 ```
 
-- Iterates over all elements in the buffer.
+- Yields proxies for each struct in the buffer.
+- Fully respects slicing and `baseOffset`.
 
 ---
 
-also document errors
+### **Public Properties**
 
-Create a README.md file:
-I need an introduction explaining what BufferWrap is and what it is used for.
+- `buffer: ArrayBuffer` – The raw binary data.
+- `stride: number` – Total bytes per struct.
+- `byteLength: number` – Size of the underlying buffer.
 
-Then i need a small demo showing the npm install buffwrap as well as the most basic use of the library.
+---
 
-I need a contributors section
+## 🧠 How It Works
 
-Then i need a section documenting the BufferWrap class, each of the public attributes and their types as well as each method, their type and, some example code and an explanation of how to use that method.
+### 🔁 Proxy System
 
-as part of the file:
-summarized and document specifics of the BufferWrap library. In detail describe how the proxy system works, and how consistency is maintained. Describe how slicing works and the pitfalls when using nested slices. Document the proxyCache and its lifecycle, when is it cleared, when is it reused, when is it updated. How does sharing buffers work? does it work on an ArrayBuffer? SharedArrayBuffer? TypedArray? What is the difference between copyInto, move and swap. Summary: Rules for proxyCache safety. Why is it better to regenerate proxies with at() as much as possible, do proxies go stale? what is the difference between the byte offset and the logical idx
+- `at(idx)` returns a `Proxy` with traps for `get`/`set` to read/write buffer fields.
+- A `currentIndex` is embedded into each proxy to allow updates when moved/swapped.
+- Proxies are reused via `proxyCache`.
 
-another part:
-create a questions and answer section based on some of the things I have had the biggest problems with, and things that I have asked about a lot.
+---
 
-add a license section MIT license
+### 🧩 Slices
+
+- `.slice(start, end)` returns a new BufferWrap sharing the same memory.
+- It maintains `baseOffset` so all reads/writes map correctly.
+- Deep slices are supported and safe.
+
+**Pitfall:** Modifying overlapping slices can create logical confusion if proxy cache is not revalidated with `.at()`.
+
+---
+
+### 🧼 Proxy Cache Lifecycle
+
+| Event       | Behavior                  |
+| ----------- | ------------------------- |
+| `.at(idx)`  | Creates or reuses a proxy |
+| `.move()`   | Updates proxy mapping     |
+| `.swap()`   | Updates both proxies      |
+| `.insert()` | Clears all proxies        |
+| `.from()`   | Clears all proxies        |
+| `.slice()`  | Shares parent cache       |
+
+---
+
+### ⚠️ ProxyCache Safety Rules
+
+| Rule                                                     |
+| -------------------------------------------------------- |
+| Always access data via `.at(idx)`                        |
+| Never reuse proxies across `.insert()` or `.from()`      |
+| After `.move()` or `.swap()`, proxies are updated safely |
+| Shared slices use the same cache — changes are reflected |
+| Never mutate `proxy.currentIndex` manually               |
+
+---
+
+### 🔄 Buffer Sharing
+
+- Works with `ArrayBuffer`, `SharedArrayBuffer`, or any `TypedArray.buffer`
+- All `BufferWrap`s must use the same layout (`stride`, `offsets`)
+- Shared buffer means shared memory — changes are visible to all slices and instances
+
+---
+
+### 📊 Comparison: `copyInto` vs `move` vs `swap`
+
+| Method     | Copies? | Overwrites? | Proxy Update? | Use case                       |
+| ---------- | ------- | ----------- | ------------- | ------------------------------ |
+| `copyInto` | ✅      | ✅          | ❌            | Export data to external target |
+| `move`     | ✅      | ✅          | ✅            | Relocate a struct's data       |
+| `swap`     | 🔁      | 🔁          | ✅            | Exchange positions             |
+
+---
+
+### 💡 Logical Index vs Byte Offset
+
+- **Logical index**: the position used with `.at()` (e.g., 0, 1, 2)
+- **Byte offset**: `baseOffset + idx * stride` — memory math for `DataView`
+- Proxies use logical index keys internally in the `proxyCache`
+
+---
+
+## ❓ Q&A
+
+### Why is `.at()` returning stale data?
+
+You may be reusing a proxy that was invalidated by `.insert()` or `.from()`. Always call `.at()` again after structural changes.
+
+---
+
+### Can I use `.from()` with a `SharedArrayBuffer`?
+
+Yes – just ensure the layout and offsets are identical. The buffer must have enough capacity.
+
+---
+
+### What happens if I `.slice()` and then `.insert()`?
+
+`.insert()` will shift data and clear the proxy cache — so any old proxies (even in slices) may go stale. Call `.at()` again to ensure consistency.
+
+---
+
+### When is `proxyCache` cleared?
+
+- After `.from()` or `.insert()`
+- Not after `.move()` or `.swap()` (proxies are remapped)
+- Slices share cache, so changes propagate
+
+---
+
+### Why use proxies at all?
+
+Proxies let you write structured values (`obj.a = 5`, `obj.b = [1, 2]`) directly into raw binary buffers, without managing `DataView` offsets yourself. They provide zero-cost abstraction over binary memory.
+
+---
+
+## 📄 License
+
+MIT License — free to use, modify, and distribute.
