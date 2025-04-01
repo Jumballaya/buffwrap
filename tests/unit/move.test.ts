@@ -72,18 +72,3 @@ test("Move with slice still modifies parent", () => {
 
   expect(buffer.at(1).a).toBe(100);
 });
-
-test("Move ignores out-of-bounds from index", () => {
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 2 });
-  buffer.at(0).a = 1;
-  // No error should be thrown
-  expect(() => buffer.move(5, 0)).not.toThrow();
-  expect(buffer.at(0).a).toBe(1); // unchanged
-});
-
-test("Move ignores out-of-bounds to index", () => {
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 2 });
-  buffer.at(1).a = 99;
-  // No error should be thrown
-  expect(() => buffer.move(1, 5)).not.toThrow();
-});

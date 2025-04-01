@@ -208,3 +208,20 @@ for (const entity of buffer.iterate()) {
 ---
 
 also document errors
+
+Create a README.md file:
+I need an introduction explaining what BufferWrap is and what it is used for.
+
+Then i need a small demo showing the npm install buffwrap as well as the most basic use of the library.
+
+I need a contributors section
+
+Then i need a section documenting the BufferWrap class, each of the public attributes and their types as well as each method, their type and, some example code and an explanation of how to use that method.
+
+as part of the file:
+summarized and document specifics of the BufferWrap library. In detail describe how the proxy system works, and how consistency is maintained. Describe how slicing works and the pitfalls when using nested slices. Document the proxyCache and its lifecycle, when is it cleared, when is it reused, when is it updated. How does sharing buffers work? does it work on an ArrayBuffer? SharedArrayBuffer? TypedArray? What is the difference between copyInto, move and swap. Summary: Rules for proxyCache safety. Why is it better to regenerate proxies with at() as much as possible, do proxies go stale? what is the difference between the byte offset and the logical idx
+
+another part:
+create a questions and answer section based on some of the things I have had the biggest problems with, and things that I have asked about a lot.
+
+add a license section MIT license

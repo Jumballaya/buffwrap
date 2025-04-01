@@ -8,6 +8,10 @@ import type {
   WrapperStructCompiled,
 } from "./types";
 
+type WrapperProxyInternal<T extends WrapperStruct> = {
+  currentIndex: number;
+} & Partial<WrapperStructCompiled<T>>;
+
 //
 // BufferWrap
 //
@@ -17,7 +21,8 @@ import type {
 //    data in a uniform buffer, etc. etc.
 export class BufferWrap<T extends WrapperStruct> {
   private config: WrapperConfig<T> & WrapperConfigOffsets<T>;
-  private proxyCache: Map<number, WrapperStructCompiled<T>> = new Map();
+  private proxyCache: Map<number /* Logical idx */, WrapperStructCompiled<T>> =
+    new Map();
   private buffers: BufferList<T> = {} as BufferList<T>; // @TODO: better typing
   public buffer: ArrayBuffer;
   private view: DataView;
@@ -87,28 +92,33 @@ export class BufferWrap<T extends WrapperStruct> {
         `at(): Index ${idx} is out of bounds (capacity: ${this.config.capacity}).`
       );
     }
-    const cacheKey = this.baseOffset + idx * this._stride;
-    let found = this.proxyCache.get(cacheKey);
+    const logicalIndex = idx + this.baseOffset / this._stride;
+    let found = this.proxyCache.get(logicalIndex);
     if (found) {
       return found;
     }
 
-    found = new Proxy({} as WrapperStructCompiled<T>, {
+    const ctx = {
+      currentIndex: logicalIndex,
+    } as WrapperProxyInternal<T>;
+    found = new Proxy(ctx as WrapperStructCompiled<T>, {
       get: (_, key: string) => {
+        if (key === "currentIndex") return ctx.currentIndex;
         if (!(key in this.config.struct)) return undefined;
-        return this.getElementAttribute(key as keyof T, idx);
+        return this.getElementAttribute(key as keyof T, ctx.currentIndex);
       },
       set: (_, key: string, value) => {
+        if (key === "currentIndex") {
+          ctx.currentIndex = value;
+          return true;
+        }
         if (!(key in this.config.struct)) return false;
-        this.setElementAttribute(key as keyof T, value, idx);
+        this.setElementAttribute(key as keyof T, value, ctx.currentIndex);
         return true;
       },
     });
 
-    if (!this.proxyCache.has(cacheKey)) {
-      this.proxyCache.set(cacheKey, found);
-    }
-
+    this.proxyCache.set(logicalIndex, found);
     return found;
   }
 
@@ -196,13 +206,12 @@ export class BufferWrap<T extends WrapperStruct> {
         ? fromId
         : [...this.proxyCache.entries()].find(([, v]) => v === fromId)?.[0];
 
+    if (from === toId) return;
     if (from === undefined) {
       throw new Error(`move(): Source index not found.`);
     }
 
     if (
-      from === undefined ||
-      from === toId ||
       from < 0 ||
       toId < 0 ||
       from >= this.config.capacity ||
@@ -213,17 +222,17 @@ export class BufferWrap<T extends WrapperStruct> {
       );
     }
 
-    const fromStart = this.baseOffset + from * this._stride;
-    const toStart = this.baseOffset + toId * this._stride;
+    const fromStart = this.getByteOffset(from);
+    const toStart = this.getByteOffset(toId);
 
     new Uint8Array(this.buffer, toStart, this._stride).set(
       new Uint8Array(this.buffer, fromStart, this._stride)
     );
 
-    const proxy = this.proxyCache.get(fromStart);
-    this.proxyCache.clear();
+    const proxy = this.proxyCache.get(from);
+    this.proxyCache.delete(from);
     if (proxy) {
-      this.proxyCache.set(toStart, proxy);
+      this.proxyCache.set(toId, proxy);
     }
   }
 
@@ -408,6 +417,33 @@ export class BufferWrap<T extends WrapperStruct> {
     }
   }
 
+  public swap(a: number, b: number) {
+    if (a === b) return;
+    if (
+      a < 0 ||
+      b < 0 ||
+      a >= this.config.capacity ||
+      b >= this.config.capacity
+    ) {
+      throw new Error(
+        `swap(): Indices out of bounds (a: ${a}, b: ${b}, capacity: ${this.config.capacity})`
+      );
+    }
+
+    const aOffset = this.getByteOffset(a);
+    const bOffset = this.getByteOffset(b);
+
+    for (let i = 0; i < this._stride; i++) {
+      const byteA = this.view.getUint8(aOffset + i);
+      const byteB = this.view.getUint8(bOffset + i);
+      this.view.setUint8(aOffset + i, byteB);
+      this.view.setUint8(bOffset + i, byteA);
+    }
+
+    this.remapProxy(a, b);
+    this.remapProxy(b, a);
+  }
+
   public *iterate(): Generator<WrapperStructCompiled<T>, void, unknown> {
     for (let i = 0; i < this.config.capacity; i++) {
       yield this.at(i);
@@ -419,8 +455,7 @@ export class BufferWrap<T extends WrapperStruct> {
   //
 
   private getElementAttribute(key: keyof T, idx: number): number | number[] {
-    const offset =
-      this.baseOffset + this.config.offsets[key] + idx * this._stride;
+    const offset = this.config.offsets[key] + idx * this._stride;
     const { length, type } = this.config.struct[key];
 
     if (length === 1) {
@@ -440,8 +475,7 @@ export class BufferWrap<T extends WrapperStruct> {
     index: number
   ) {
     this.validateAttribute(key, v);
-    const offset =
-      this.baseOffset + this.config.offsets[key] + index * this._stride;
+    const offset = this.config.offsets[key] + index * this._stride;
     const type = this.config.struct[key].type;
 
     if (typeof v === "number") {
@@ -474,7 +508,7 @@ export class BufferWrap<T extends WrapperStruct> {
       case Int32Array:
         return this.view.getInt32(offset, true);
       default:
-        throw new Error("Unsupported type");
+        throw new Error(`Unsupported type: ${type.name}`);
     }
   }
 
@@ -560,6 +594,21 @@ export class BufferWrap<T extends WrapperStruct> {
           key
         )}" received invalid type. Expected number or array, received ${typeof value}.`
       );
+    }
+  }
+
+  private getByteOffset(idx: number): number {
+    return this.baseOffset + idx * this._stride;
+  }
+
+  private remapProxy(from: number, to: number) {
+    const proxy = this.proxyCache.get(from) as
+      | WrapperProxyInternal<T>
+      | undefined;
+    if (proxy) {
+      proxy.currentIndex = to;
+      this.proxyCache.set(to, proxy as WrapperStructCompiled<T>);
+      this.proxyCache.delete(from);
     }
   }
 }
