@@ -1,45 +1,4 @@
-export type WrapperStructConfig<T extends WrapperStruct> = {
-  // eslint-disable-next-line no-unused-vars
-  [k in keyof T]: number;
-};
-
-export type WrapperStructTypesConfig<T extends WrapperStruct> = {
-  // eslint-disable-next-line no-unused-vars
-  [k in keyof T]:
-    | typeof Float32Array
-    | typeof Uint8Array
-    | typeof Int8Array
-    | typeof Uint16Array
-    | typeof Int16Array
-    | typeof Uint32Array
-    | typeof Int32Array;
-};
-
-export type WrapperStructCompiled<T extends WrapperStruct> = {
-  [k in keyof T]: T[k];
-};
-
-export type WrapperStruct = {
-  [k: string]:
-    | number
-    | [number, number]
-    | [number, number, number]
-    | [number, number, number, number];
-};
-
-export type BufferList<T extends WrapperStruct> = {
-  [K in keyof T]?: InstanceType<WrapperStructTypesConfig<T>[K]>;
-};
-
-export type ArrayType =
-  | Float32Array
-  | Uint8Array
-  | Int8Array
-  | Uint16Array
-  | Int16Array
-  | Uint32Array
-  | Int32Array;
-
+// Allowed Typed Arrays
 export type TypedArrayConstructor =
   | typeof Float32Array
   | typeof Uint8Array
@@ -49,27 +8,71 @@ export type TypedArrayConstructor =
   | typeof Uint32Array
   | typeof Int32Array;
 
-export type Vec<T extends number> = T extends 1
-  ? number
-  : T extends 2
-  ? [number, number]
-  : T extends 3
-  ? [number, number, number]
-  : T extends 4
-  ? [number, number, number, number]
-  : number;
+export type ArrayType = InstanceType<TypedArrayConstructor>;
 
+// Represents possible fixed-length tuples for vectors/matrices
+export type StructValue =
+  | number // scalar
+  | [number, number] // vec2
+  | [number, number, number] // vec3
+  | [number, number, number, number] // vec4 or mat2
+  | [number, number, number, number, number, number, number, number, number] // mat3
+  | [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number
+    ] // mat4
+  | number[]; // variable-length arrays
+
+// Defines struct configuration for BufferWrap
+export type WrapperStruct = Record<string, StructValue>;
+
+// Compiled Struct Type (same as definition)
+export type WrapperStructCompiled<T extends WrapperStruct> = {
+  [K in keyof T]: T[K];
+};
+
+// BufferList - Typed arrays mapped by keys of struct
+export type BufferList<T extends WrapperStruct> = {
+  // eslint-disable-next-line no-unused-vars
+  [K in keyof T]?: ArrayType;
+};
+
+// Configuration for each struct field with explicit length and type
+export type StructFieldConfig = {
+  length: number; // actual number of elements
+  type: TypedArrayConstructor; // typed array type
+};
+
+// Struct definition mapping keys to detailed field config
+export type WrapperStructConfig<T extends WrapperStruct> = {
+  // eslint-disable-next-line no-unused-vars
+  [K in keyof T]: StructFieldConfig;
+};
+
+// Main configuration type for BufferWrap constructor
 export type WrapperConfig<T extends WrapperStruct> = {
   struct: WrapperStructConfig<T>;
-  types: WrapperStructTypesConfig<T>;
-  capacity: number; // number of total elements
+  capacity: number;
   alignment?: number;
   buffer?: ArrayBuffer;
 };
 
+// Offsets definition for struct fields
 export type WrapperConfigOffsets<T extends WrapperStruct> = {
-  offsets: {
-    // eslint-disable-next-line no-unused-vars
-    [k in keyof T]: number;
-  };
+  // eslint-disable-next-line no-unused-vars
+  offsets: { [K in keyof T]: number };
 };

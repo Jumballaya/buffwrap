@@ -6,7 +6,6 @@ import type {
   WrapperConfigOffsets,
   WrapperStruct,
   WrapperStructCompiled,
-  WrapperStructTypesConfig,
 } from "./types";
 
 //
@@ -31,13 +30,13 @@ export class BufferWrap<T extends WrapperStruct> {
     if (!config.offsets) {
       const offsets: Record<string, number> = {};
       let stride = 0;
-      for (const key of Object.keys(config.struct)) {
-        const type = config.types[key];
+      for (const key in config.struct) {
+        const { type, length } = config.struct[key];
         const typeAlignment = type.BYTES_PER_ELEMENT;
 
         stride = alignOffset(stride, Math.max(alignment, typeAlignment));
         offsets[key] = stride;
-        stride += config.struct[key] * typeAlignment;
+        stride += length * typeAlignment;
       }
 
       this._stride = stride;
@@ -50,9 +49,8 @@ export class BufferWrap<T extends WrapperStruct> {
       this.config = config as WrapperConfig<T> & WrapperConfigOffsets<T>;
       this._stride = Object.entries(this.config.offsets).reduce(
         (acc, [key, val]) => {
-          const len = this.config.struct[key as keyof T];
-          const type = this.config.types[key as keyof T];
-          return Math.max(acc, val + len * type.BYTES_PER_ELEMENT);
+          const { length, type } = this.config.struct[key as keyof T];
+          return Math.max(acc, val + length * type.BYTES_PER_ELEMENT);
         },
         0
       );
@@ -73,8 +71,9 @@ export class BufferWrap<T extends WrapperStruct> {
 
   public attributeStride(name: string): number {
     const key = name as keyof T;
-    if (key in this.config.types) {
-      return this.config.types[key].BYTES_PER_ELEMENT * this.config.struct[key];
+    if (key in this.config.struct) {
+      const { type, length } = this.config.struct[key];
+      return type.BYTES_PER_ELEMENT * length;
     }
     return 0;
   }
@@ -83,6 +82,11 @@ export class BufferWrap<T extends WrapperStruct> {
   // the given index. updating this proxy will update the
   // underlying buffer
   public at(idx: number): WrapperStructCompiled<T> {
+    if (idx < 0 || idx >= this.config.capacity) {
+      throw new Error(
+        `at(): Index ${idx} is out of bounds (capacity: ${this.config.capacity}).`
+      );
+    }
     const cacheKey = this.baseOffset + idx * this._stride;
     let found = this.proxyCache.get(cacheKey);
     if (found) {
@@ -118,20 +122,17 @@ export class BufferWrap<T extends WrapperStruct> {
       return this.buffers[key];
     }
 
-    const len = this.config.struct[key];
-    const type = this.config.types[key];
+    const { type, length } = this.config.struct[key];
     const offset = this.config.offsets[key];
-    const buffer = new type(len * this.config.capacity);
+    const buffer = new type(length * this.config.capacity);
 
     for (let i = 0; i < this.config.capacity; i++) {
       const start = this._stride * i + offset;
-      const end = start + len * type.BYTES_PER_ELEMENT;
-      buffer.set(new type(this.buffer.slice(start, end)), i * len);
+      const end = start + length * type.BYTES_PER_ELEMENT;
+      buffer.set(new type(this.buffer.slice(start, end)), i * length);
     }
 
-    this.buffers[key] = buffer as InstanceType<
-      WrapperStructTypesConfig<T>[typeof key]
-    >;
+    this.buffers[key] = buffer;
     return buffer;
   }
 
@@ -166,15 +167,14 @@ export class BufferWrap<T extends WrapperStruct> {
       const inDataBuffer = buffer[k]!;
       const stride = this._stride;
       const offset = this.config.offsets[k];
-      const type = this.config.types[k];
-      const len = this.config.struct[k];
+      const { type, length } = this.config.struct[k];
       for (let i = 0; i < this.config.capacity; i++) {
         const ptr = stride * i + offset;
-        new Uint8Array(this.buffer, ptr, len * type.BYTES_PER_ELEMENT).set(
+        new Uint8Array(this.buffer, ptr, length * type.BYTES_PER_ELEMENT).set(
           new Uint8Array(
             inDataBuffer.buffer,
-            i * len * type.BYTES_PER_ELEMENT,
-            len * type.BYTES_PER_ELEMENT
+            i * length * type.BYTES_PER_ELEMENT,
+            length * type.BYTES_PER_ELEMENT
           ),
           0
         );
@@ -196,6 +196,10 @@ export class BufferWrap<T extends WrapperStruct> {
         ? fromId
         : [...this.proxyCache.entries()].find(([, v]) => v === fromId)?.[0];
 
+    if (from === undefined) {
+      throw new Error(`move(): Source index not found.`);
+    }
+
     if (
       from === undefined ||
       from === toId ||
@@ -204,7 +208,9 @@ export class BufferWrap<T extends WrapperStruct> {
       from >= this.config.capacity ||
       toId >= this.config.capacity
     ) {
-      return;
+      throw new Error(
+        `move(): Indices out of bounds (source: ${from}, target: ${toId}, capacity: ${this.config.capacity}).`
+      );
     }
 
     const fromStart = this.baseOffset + from * this._stride;
@@ -241,6 +247,11 @@ export class BufferWrap<T extends WrapperStruct> {
     idx: number,
     data: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>
   ) {
+    if (idx < 0 || idx > this.config.capacity) {
+      throw new Error(
+        `insert(): Index ${idx} is out of bounds (capacity: ${this.config.capacity}).`
+      );
+    }
     const insertCount = data instanceof BufferWrap ? data.config.capacity : 1;
     const requiredCapacity = this.config.capacity + insertCount;
 
@@ -271,12 +282,14 @@ export class BufferWrap<T extends WrapperStruct> {
       const sameStruct =
         JSON.stringify(this.config.struct) ===
         JSON.stringify(data.config.struct);
-      const sameTypes = Object.keys(this.config.types).every(
-        (k) => this.config.types[k] === data.config.types[k]
+      const sameTypes = Object.keys(this.config.struct).every(
+        (k) => this.config.struct[k].type === data.config.struct[k].type
       );
 
       if (!sameStruct || !sameTypes) {
-        throw new Error("Incompatible BufferWrap: struct or types mismatch.");
+        throw new Error(
+          "insert(): BufferWrap struct mismatch between source and target."
+        );
       }
 
       const isSelfSlice = data.buffer === this.buffer;
@@ -309,6 +322,11 @@ export class BufferWrap<T extends WrapperStruct> {
     }
 
     if (data instanceof ArrayBuffer) {
+      if (data.byteLength !== this._stride) {
+        throw new Error(
+          `insert(): ArrayBuffer length mismatch (expected: ${this._stride}, received: ${data.byteLength}).`
+        );
+      }
       new Uint8Array(this.buffer, idx * this._stride, data.byteLength).set(
         new Uint8Array(data)
       );
@@ -320,17 +338,16 @@ export class BufferWrap<T extends WrapperStruct> {
       const value = data[key];
       if (!value) continue;
 
-      const type = this.config.types[key];
-      const len = this.config.struct[key];
+      const { type, length } = this.config.struct[key];
       const offset = this.config.offsets[key];
 
       if (!(value instanceof type)) {
         throw new Error(
-          `Expected ${type.name} for key "${key}", but got ${value.constructor.name}`
+          `insert(): Invalid type for field "${key}". Expected ${type.name}, received ${value.constructor.name}.`
         );
       }
 
-      for (let i = 0; i < len; i++) {
+      for (let i = 0; i < length; i++) {
         const byteOffset =
           idx * this._stride + offset + i * type.BYTES_PER_ELEMENT;
         this.writeData(type, byteOffset, value[i]);
@@ -371,17 +388,20 @@ export class BufferWrap<T extends WrapperStruct> {
       const buffer = target[k];
       if (!buffer) continue;
 
-      const type = this.config.types[k];
-      const len = this.config.struct[k];
+      const { type, length } = this.config.struct[k];
       const offset = this.config.offsets[k];
 
       const bufferView = new Uint8Array(buffer.buffer);
 
       for (let i = 0; i < this.config.capacity; i++) {
         const srcOffset = this.baseOffset + i * this._stride + offset;
-        const dstOffset = i * len * type.BYTES_PER_ELEMENT;
+        const dstOffset = i * length * type.BYTES_PER_ELEMENT;
         bufferView.set(
-          new Uint8Array(this.buffer, srcOffset, len * type.BYTES_PER_ELEMENT),
+          new Uint8Array(
+            this.buffer,
+            srcOffset,
+            length * type.BYTES_PER_ELEMENT
+          ),
           dstOffset
         );
       }
@@ -401,15 +421,14 @@ export class BufferWrap<T extends WrapperStruct> {
   private getElementAttribute(key: keyof T, idx: number): number | number[] {
     const offset =
       this.baseOffset + this.config.offsets[key] + idx * this._stride;
-    const len = this.config.struct[key];
-    const type = this.config.types[key];
+    const { length, type } = this.config.struct[key];
 
-    if (len === 1) {
+    if (length === 1) {
       return this.readData(type, offset);
     }
 
     const result: number[] = [];
-    for (let i = 0; i < len; i++) {
+    for (let i = 0; i < length; i++) {
       result.push(this.readData(type, offset + i * type.BYTES_PER_ELEMENT));
     }
     return result;
@@ -420,9 +439,10 @@ export class BufferWrap<T extends WrapperStruct> {
     v: number | number[],
     index: number
   ) {
+    this.validateAttribute(key, v);
     const offset =
       this.baseOffset + this.config.offsets[key] + index * this._stride;
-    const type = this.config.types[key];
+    const type = this.config.struct[key].type;
 
     if (typeof v === "number") {
       this.writeData(type, offset, v);
@@ -487,6 +507,59 @@ export class BufferWrap<T extends WrapperStruct> {
         break;
       default:
         throw new Error("Unsupported type");
+    }
+  }
+
+  private validateAttribute(key: keyof T, value: any) {
+    const { length, type } = this.config.struct[key];
+
+    if (typeof value === "number") {
+      if (length !== 1) {
+        throw new Error(
+          `Expected array of length ${length} for "${String(
+            key
+          )}", but got a scalar value instead`
+        );
+      }
+      if (type !== Float32Array && !Number.isInteger(value)) {
+        throw new Error(
+          `Attribute "${String(
+            key
+          )}" expects integer values, but received a non-integer scalar value ${value}.`
+        );
+      }
+    } else if (Array.isArray(value)) {
+      if (value.length !== length) {
+        throw new Error(
+          `Attribute "${String(
+            key
+          )}" expects array of length ${length}, but received length ${
+            value.length
+          }.`
+        );
+      }
+      value.forEach((v, i) => {
+        if (typeof v !== "number") {
+          throw new Error(
+            `Attribute "${String(
+              key
+            )}" received invalid type at index ${i}. Expected number, received ${typeof v}.`
+          );
+        }
+        if (type !== Float32Array && !Number.isInteger(v)) {
+          throw new Error(
+            `Attribute "${String(
+              key
+            )}" expects integer values, but received a non-integer value ${v} at index ${i}.`
+          );
+        }
+      });
+    } else {
+      throw new Error(
+        `Attribute "${String(
+          key
+        )}" received invalid type. Expected number or array, received ${typeof value}.`
+      );
     }
   }
 }

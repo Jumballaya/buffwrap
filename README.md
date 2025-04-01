@@ -206,3 +206,5 @@ for (const entity of buffer.iterate()) {
 - Iterates over all elements in the buffer.
 
 ---
+
+also document errors

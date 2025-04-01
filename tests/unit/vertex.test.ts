@@ -8,16 +8,11 @@ type VertexStruct = {
 
 test("Can create a simple quad", () => {
   const quadWrapper = new BufferWrap<VertexStruct>({
-    types: {
-      position: Float32Array,
-      texCoord: Float32Array,
-      normal: Float32Array,
-    },
     capacity: 4,
     struct: {
-      position: 3,
-      texCoord: 2,
-      normal: 3,
+      position: { length: 3, type: Float32Array },
+      texCoord: { length: 2, type: Float32Array },
+      normal: { length: 3, type: Float32Array },
     },
   });
 

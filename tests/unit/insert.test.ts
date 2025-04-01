@@ -87,8 +87,16 @@ test("Insert rejects incompatible BufferWrap", () => {
 
   const otherConfig = {
     ...config,
-    struct: { a: 1, b: 3 },
-    types: config.types,
+    struct: {
+      a: {
+        length: 1,
+        type: config.struct.a.type,
+      },
+      b: {
+        length: 3,
+        type: config.struct.b.type,
+      },
+    },
     capacity: 1,
   };
   const other = new BufferWrap<TestStruct>(otherConfig);
