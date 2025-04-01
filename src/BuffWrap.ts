@@ -44,7 +44,7 @@ export class BufferWrap<T extends WrapperStruct> {
 
       this.config = {
         ...config,
-        offsets: offsets as { [k in keyof T]: number },
+        offsets: offsets as WrapperConfigOffsets<T>["offsets"],
       };
     } else {
       this.config = config as WrapperConfig<T> & WrapperConfigOffsets<T>;

@@ -1,8 +1,10 @@
 export type WrapperStructConfig<T extends WrapperStruct> = {
+  // eslint-disable-next-line no-unused-vars
   [k in keyof T]: number;
 };
 
 export type WrapperStructTypesConfig<T extends WrapperStruct> = {
+  // eslint-disable-next-line no-unused-vars
   [k in keyof T]:
     | typeof Float32Array
     | typeof Uint8Array
@@ -67,6 +69,7 @@ export type WrapperConfig<T extends WrapperStruct> = {
 
 export type WrapperConfigOffsets<T extends WrapperStruct> = {
   offsets: {
+    // eslint-disable-next-line no-unused-vars
     [k in keyof T]: number;
   };
 };
