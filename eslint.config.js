@@ -19,6 +19,7 @@ module.exports = [
       "@typescript-eslint": tsPlugin,
     },
     rules: {
+      "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": ["warn"],
       "@typescript-eslint/explicit-module-boundary-types": "off",
     },

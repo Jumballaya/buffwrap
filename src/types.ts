@@ -47,7 +47,6 @@ export type WrapperStructCompiled<T extends WrapperStruct> = {
 
 // BufferList - Typed arrays mapped by keys of struct
 export type BufferList<T extends WrapperStruct> = {
-  // eslint-disable-next-line no-unused-vars
   [K in keyof T]?: ArrayType;
 };
 
@@ -59,7 +58,6 @@ export type StructFieldConfig = {
 
 // Struct definition mapping keys to detailed field config
 export type WrapperStructConfig<T extends WrapperStruct> = {
-  // eslint-disable-next-line no-unused-vars
   [K in keyof T]: StructFieldConfig;
 };
 
@@ -73,6 +71,5 @@ export type WrapperConfig<T extends WrapperStruct> = {
 
 // Offsets definition for struct fields
 export type WrapperConfigOffsets<T extends WrapperStruct> = {
-  // eslint-disable-next-line no-unused-vars
   offsets: { [K in keyof T]: number };
 };
