@@ -1,14 +1,13 @@
-import { ManagedProxy, ProxyShape } from "./proxy-manager.types";
 import { ProxyManager } from "./ProxyManager";
 import type {
   ArrayType,
   BufferList,
-  TypedArrayConstructor,
   WrapperConfig,
   WrapperConfigOffsets,
-  WrapperStruct,
-  WrapperStructCompiled,
   WrapperStructConfig,
+  ManagedProxy,
+  ProxyAccessStrategy,
+  ProxyShape,
 } from "./types";
 
 //
@@ -18,12 +17,11 @@ import type {
 //    This could be particles in a particle system, messages passed from
 //    web workers, information from a WebGPU compute pipeline, lighting
 //    data in a uniform buffer, etc. etc.
-export class BufferWrap<T extends WrapperStruct> {
+export class BufferWrap<T extends ProxyShape> {
   private config: WrapperConfig<T> & WrapperConfigOffsets<T>;
   private proxyManager: ProxyManager<T>;
+  private strategy: ProxyAccessStrategy<T>;
   private buffers: BufferList<T> = {} as BufferList<T>; // @TODO: better typing
-  public buffer: ArrayBuffer;
-  private view: DataView;
   private _stride = 0;
   private baseOffset = 0;
 
@@ -48,17 +46,18 @@ export class BufferWrap<T extends WrapperStruct> {
       );
     }
 
-    const byteLength = this._stride * config.capacity;
-    this.buffer = config.buffer ?? new ArrayBuffer(byteLength);
-    this.view = new DataView(this.buffer);
-    this.proxyManager = new ProxyManager<T>({
-      get: (k, i) => this.getElementAttribute(k, i) as T[keyof T],
-      set: (k, v, i) => this.setElementAttribute(k, v, i),
+    this.strategy = new config.strategy({
+      struct: this.config.struct,
+      offsets: this.config.offsets,
+      stride: this._stride,
+      capacity: this.config.capacity,
+      alignment: this.config.alignment,
     });
+    this.proxyManager = new ProxyManager<T>(this.strategy);
   }
 
   public get byteLength(): number {
-    return this.view.byteLength;
+    return this.strategy.byteLength;
   }
 
   public get stride(): number {
@@ -77,7 +76,7 @@ export class BufferWrap<T extends WrapperStruct> {
   // Generates a proxy object that represents your struct at
   // the given index. updating this proxy will update the
   // underlying buffer
-  public at(idx: number): WrapperStructCompiled<T> {
+  public at(idx: number): ManagedProxy<T> {
     if (idx < 0 || idx >= this.config.capacity) {
       throw new Error(
         `at(): Index ${idx} is out of bounds (capacity: ${this.config.capacity}).`
@@ -165,7 +164,7 @@ export class BufferWrap<T extends WrapperStruct> {
   // the index 10 and that would be reflected in the underlying data buffer
   // or you can do something like .move(42, 10) which will move the struct
   // data at index 42 to index 10
-  public move(fromId: number | WrapperStructCompiled<T>, toId: number) {
+  public move(fromId: number | ManagedProxy<T>, toId: number) {
     const from = isProxy(fromId)
       ? isProxy(fromId.currentIndex)
         ? -1
@@ -228,17 +227,7 @@ export class BufferWrap<T extends WrapperStruct> {
 
     const insertCount = data instanceof BufferWrap ? data.config.capacity : 1;
     const requiredCapacity = this.config.capacity + insertCount;
-
-    if (requiredCapacity * this._stride > this.buffer.byteLength) {
-      const newBufferSize = Math.max(
-        this.byteLength * 2,
-        requiredCapacity * this._stride
-      );
-      const newBuffer = new ArrayBuffer(newBufferSize);
-      new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
-      this.buffer = newBuffer;
-      this.view = new DataView(this.buffer);
-    }
+    this.resizeBufferIfNeeded(insertCount);
 
     // Move existing data forward to make space
     for (let i = this.config.capacity - 1; i >= idx; i--) {
@@ -250,84 +239,19 @@ export class BufferWrap<T extends WrapperStruct> {
     }
 
     this.proxyManager.insert(idx, insertCount);
-    this.config.capacity = requiredCapacity;
-    this.buffers = {} as BufferList<T>;
+    this.setCapacity(requiredCapacity);
 
     if (data instanceof BufferWrap) {
-      const sameStruct =
-        JSON.stringify(this.config.struct) ===
-        JSON.stringify(data.config.struct);
-      const sameTypes = Object.keys(this.config.struct).every(
-        (k) => this.config.struct[k].type === data.config.struct[k].type
-      );
-
-      if (!sameStruct || !sameTypes) {
-        throw new Error(
-          "insert(): BufferWrap struct mismatch between source and target."
-        );
-      }
-
-      const isSelfSlice = data.buffer === this.buffer;
-      const temp = isSelfSlice
-        ? new Uint8Array(data._stride * data.config.capacity)
-        : null;
-      if (isSelfSlice) {
-        temp?.set(
-          new Uint8Array(
-            data.buffer,
-            data.baseOffset,
-            data._stride * data.config.capacity
-          )
-        );
-      }
-
-      for (let i = 0; i < data.config.capacity; i++) {
-        const fromOffset = isSelfSlice
-          ? i * data._stride
-          : data.baseOffset + i * data._stride;
-        const toOffset = (idx + i) * this._stride;
-        new Uint8Array(this.buffer, toOffset, this._stride).set(
-          isSelfSlice && temp !== null
-            ? new Uint8Array(temp?.buffer, fromOffset, this._stride)
-            : new Uint8Array(data.buffer, fromOffset, this._stride)
-        );
-      }
-
+      this.insertFromBufferWrap(data, idx);
       return;
     }
 
     if (data instanceof ArrayBuffer) {
-      if (data.byteLength !== this._stride) {
-        throw new Error(
-          `insert(): ArrayBuffer length mismatch (expected: ${this._stride}, received: ${data.byteLength}).`
-        );
-      }
-      new Uint8Array(this.buffer, idx * this._stride, data.byteLength).set(
-        new Uint8Array(data)
-      );
+      this.insertFromArrayBuffer(data, idx);
       return;
     }
 
-    // Struct of typed arrays (BufferList-style)
-    for (const key in data) {
-      const value = data[key];
-      if (!value) continue;
-
-      const { type, length } = this.config.struct[key];
-      const offset = this.config.offsets[key];
-
-      if (!(value instanceof type)) {
-        throw new Error(
-          `insert(): Invalid type for field "${key}". Expected ${type.name}, received ${value.constructor.name}.`
-        );
-      }
-
-      for (let i = 0; i < length; i++) {
-        const byteOffset =
-          idx * this._stride + offset + i * type.BYTES_PER_ELEMENT;
-        this.writeData(type, byteOffset, value[i]);
-      }
-    }
+    this.insertFromBufferList(data, idx);
   }
 
   public copyInto(
@@ -403,7 +327,7 @@ export class BufferWrap<T extends WrapperStruct> {
     this.proxyManager.swap(a, b);
   }
 
-  public *iterate(): Generator<WrapperStructCompiled<T>, void, unknown> {
+  public *iterate(): Generator<ManagedProxy<T>, void, unknown> {
     for (let i = 0; i < this.config.capacity; i++) {
       yield this.at(i);
     }
@@ -412,152 +336,90 @@ export class BufferWrap<T extends WrapperStruct> {
   //
   // Private internal helper methods
   //
-
-  private getElementAttribute(key: keyof T, idx: number): number | number[] {
-    const offset = this.config.offsets[key] + idx * this._stride;
-    const { length, type } = this.config.struct[key];
-
-    if (length === 1) {
-      return this.readData(type, offset);
-    }
-
-    const result: number[] = [];
-    for (let i = 0; i < length; i++) {
-      result.push(this.readData(type, offset + i * type.BYTES_PER_ELEMENT));
-    }
-    return result;
+  private getByteOffset(idx: number): number {
+    return this.baseOffset + idx * this._stride;
   }
 
-  private setElementAttribute(
-    key: keyof T,
-    v: number | number[],
-    index: number
-  ) {
-    this.validateAttribute(key, v);
-    const offset = this.config.offsets[key] + index * this._stride;
-    const type = this.config.struct[key].type;
+  private resizeBufferIfNeeded(additional: number) {
+    const required = (this.config.capacity + additional) * this._stride;
+    if (required <= this.buffer.byteLength) return;
 
-    if (typeof v === "number") {
-      this.writeData(type, offset, v);
-    } else {
-      for (let i = 0; i < v.length; i++) {
-        this.writeData(type, offset + i * type.BYTES_PER_ELEMENT, v[i]);
-      }
-    }
-    if (this.buffers[key]) {
-      const attrOffset = index * (typeof v === "number" ? 1 : v.length);
-      this.buffers[key].set(typeof v === "number" ? [v] : v, attrOffset);
-    }
+    const newSize = Math.max(this.buffer.byteLength * 2, required);
+    const newBuffer = new ArrayBuffer(newSize);
+    new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
+    this.buffer = newBuffer;
+    this.view = new DataView(this.buffer);
   }
 
-  private readData(type: TypedArrayConstructor, offset: number): number {
-    switch (type) {
-      case Float32Array:
-        return this.view.getFloat32(offset, true);
-      case Uint8Array:
-        return this.view.getUint8(offset);
-      case Int8Array:
-        return this.view.getInt8(offset);
-      case Uint16Array:
-        return this.view.getUint16(offset, true);
-      case Int16Array:
-        return this.view.getInt16(offset, true);
-      case Uint32Array:
-        return this.view.getUint32(offset, true);
-      case Int32Array:
-        return this.view.getInt32(offset, true);
-      default:
-        throw new Error(`Unsupported type: ${type.name}`);
-    }
+  private setCapacity(newCapacity: number) {
+    this.config.capacity = newCapacity;
+    this.buffers = {} as BufferList<T>;
   }
 
-  private writeData(
-    type: TypedArrayConstructor,
-    offset: number,
-    value: number
-  ) {
-    switch (type) {
-      case Float32Array:
-        this.view.setFloat32(offset, value, true);
-        break;
-      case Uint8Array:
-        this.view.setUint8(offset, value);
-        break;
-      case Int8Array:
-        this.view.setInt8(offset, value);
-        break;
-      case Uint16Array:
-        this.view.setUint16(offset, value, true);
-        break;
-      case Int16Array:
-        this.view.setInt16(offset, value, true);
-        break;
-      case Uint32Array:
-        this.view.setUint32(offset, value, true);
-        break;
-      case Int32Array:
-        this.view.setInt32(offset, value, true);
-        break;
-      default:
-        throw new Error("Unsupported type");
-    }
-  }
+  private insertFromBufferWrap(source: BufferWrap<T>, destIndex: number) {
+    const sameStruct =
+      JSON.stringify(this.config.struct) ===
+      JSON.stringify(source.config.struct);
+    const sameTypes = Object.keys(this.config.struct).every(
+      (k) => this.config.struct[k].type === source.config.struct[k].type
+    );
 
-  private validateAttribute(key: keyof T, value: any) {
-    const { length, type } = this.config.struct[key];
-
-    if (typeof value === "number") {
-      if (length !== 1) {
-        throw new Error(
-          `Expected array of length ${length} for "${String(
-            key
-          )}", but got a scalar value instead`
-        );
-      }
-      if (type !== Float32Array && !Number.isInteger(value)) {
-        throw new Error(
-          `Attribute "${String(
-            key
-          )}" expects integer values, but received a non-integer scalar value ${value}.`
-        );
-      }
-    } else if (Array.isArray(value)) {
-      if (value.length !== length) {
-        throw new Error(
-          `Attribute "${String(
-            key
-          )}" expects array of length ${length}, but received length ${
-            value.length
-          }.`
-        );
-      }
-      value.forEach((v, i) => {
-        if (typeof v !== "number") {
-          throw new Error(
-            `Attribute "${String(
-              key
-            )}" received invalid type at index ${i}. Expected number, received ${typeof v}.`
-          );
-        }
-        if (type !== Float32Array && !Number.isInteger(v)) {
-          throw new Error(
-            `Attribute "${String(
-              key
-            )}" expects integer values, but received a non-integer value ${v} at index ${i}.`
-          );
-        }
-      });
-    } else {
+    if (!sameStruct || !sameTypes) {
       throw new Error(
-        `Attribute "${String(
-          key
-        )}" received invalid type. Expected number or array, received ${typeof value}.`
+        "insert(): BufferWrap struct mismatch between source and target."
+      );
+    }
+
+    const isSelfSlice = source.buffer === this.buffer;
+    const temp = isSelfSlice
+      ? new Uint8Array(source._stride * source.config.capacity)
+      : null;
+    if (isSelfSlice) {
+      temp?.set(
+        new Uint8Array(
+          source.buffer,
+          source.baseOffset,
+          source._stride * source.config.capacity
+        )
+      );
+    }
+
+    for (let i = 0; i < source.config.capacity; i++) {
+      const fromOffset = isSelfSlice
+        ? i * source._stride
+        : source.baseOffset + i * source._stride;
+      const toOffset = (destIndex + i) * this._stride;
+      new Uint8Array(this.buffer, toOffset, this._stride).set(
+        isSelfSlice && temp !== null
+          ? new Uint8Array(temp?.buffer, fromOffset, this._stride)
+          : new Uint8Array(source.buffer, fromOffset, this._stride)
       );
     }
   }
 
-  private getByteOffset(idx: number): number {
-    return this.baseOffset + idx * this._stride;
+  private insertFromArrayBuffer(source: ArrayBuffer, at: number) {
+    if (source.byteLength !== this._stride) {
+      throw new Error(
+        `insert(): ArrayBuffer length mismatch (expected: ${this._stride}, received: ${source.byteLength}).`
+      );
+    }
+    new Uint8Array(this.buffer, at * this._stride, source.byteLength).set(
+      new Uint8Array(source)
+    );
+  }
+
+  private insertFromBufferList(data: Partial<BufferList<T>>, at: number) {
+    for (const key in data) {
+      const value = data[key];
+      if (!value) continue;
+      const { type } = this.config.struct[key];
+      if (!(value instanceof type)) {
+        throw new Error(
+          `insert(): Invalid type for field "${key}". Expected ${type.name}, received ${value.constructor.name}.`
+        );
+      }
+      this.strategy.set(key, value as T[typeof key], at);
+    }
   }
 }
 
@@ -569,7 +431,7 @@ function alignOffset(offset: number, alignment: number): number {
  * Computes byte offsets and stride for a struct definition,
  * aligning each field appropriately.
  */
-function generateOffsetsAndStride<T extends WrapperStruct>(
+function generateOffsetsAndStride<T extends ProxyShape>(
   struct: WrapperStructConfig<T>,
   alignment: number
 ): [WrapperConfigOffsets<T>["offsets"], number] {

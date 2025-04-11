@@ -1,4 +1,5 @@
 import BufferWrap from "../dist";
+import { ArrayBufferStrategy } from "../src/strategies/ArrayBufferStrategy";
 import { WrapperConfig } from "../src/types";
 
 type TestStruct = {
@@ -51,6 +52,7 @@ const config: WrapperConfig<TestStruct> = {
     variable: { length: 8, type: Float32Array }, // explicitly fixed length
   },
   capacity: 2,
+  strategy: ArrayBufferStrategy,
 };
 
 test("BufferWrap handles scalar, vector, matrix, and fixed-length variable fields correctly", () => {

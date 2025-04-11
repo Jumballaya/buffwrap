@@ -4,7 +4,7 @@ import {
   ProxyContext,
   ProxyHandlerShape,
   ProxyShape,
-} from "./proxy-manager.types";
+} from "./types";
 
 export class ProxyManager<T extends ProxyShape> {
   private cache = new Map<number, ManagedProxy<T>>();

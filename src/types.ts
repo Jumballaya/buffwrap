@@ -1,4 +1,52 @@
-// Allowed Typed Arrays
+// ----------------------
+// Core Primitive Types
+// ----------------------
+
+// Generic fixed-length tuple utility
+export type Tuple<
+  T,
+  N extends number,
+  R extends T[] = []
+> = R["length"] extends N ? R : Tuple<T, N, [T, ...R]>;
+
+// Semantic tuple aliases
+export type Vec2 = Tuple<number, 2>;
+export type Vec3 = Tuple<number, 3>;
+export type Vec4 = Tuple<number, 4>;
+export type Mat3 = Tuple<number, 9>;
+export type Mat4 = Tuple<number, 16>;
+
+// Supported values within a proxy
+export type ProxyPrimitive =
+  | number
+  | string
+  | boolean
+  | bigint
+  | number[]
+  | string[]
+  | boolean[]
+  | bigint[]
+  | Uint8Array
+  | Int8Array
+  | Uint16Array
+  | Int16Array
+  | Uint32Array
+  | Int32Array
+  | Float32Array
+  | Float64Array
+  | Vec2
+  | Vec3
+  | Vec4
+  | Mat3
+  | Mat4;
+
+// Shape of user-facing proxy structs
+export type ProxyShape = Record<string, ProxyPrimitive>;
+
+// ----------------------
+// Struct & Buffer Types
+// ----------------------
+
 export type TypedArrayConstructor =
   | typeof Float32Array
   | typeof Uint8Array
@@ -10,66 +58,63 @@ export type TypedArrayConstructor =
 
 export type ArrayType = InstanceType<TypedArrayConstructor>;
 
-// Represents possible fixed-length tuples for vectors/matrices
-export type StructValue =
-  | number // scalar
-  | [number, number] // vec2
-  | [number, number, number] // vec3
-  | [number, number, number, number] // vec4 or mat2
-  | [number, number, number, number, number, number, number, number, number] // mat3
-  | [
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number
-    ] // mat4
-  | number[]; // variable-length arrays
-
-// Defines struct configuration for BufferWrap
-export type WrapperStruct = Record<string, StructValue>;
-
-// Compiled Struct Type (same as definition)
-export type WrapperStructCompiled<T extends WrapperStruct> = {
-  [K in keyof T]: T[K];
-};
-
-// BufferList - Typed arrays mapped by keys of struct
-export type BufferList<T extends WrapperStruct> = {
+export type BufferList<T extends ProxyShape> = {
   [K in keyof T]?: ArrayType;
 };
 
-// Configuration for each struct field with explicit length and type
 export type StructFieldConfig = {
-  length: number; // actual number of elements
-  type: TypedArrayConstructor; // typed array type
+  length: number;
+  type: TypedArrayConstructor;
 };
 
-// Struct definition mapping keys to detailed field config
-export type WrapperStructConfig<T extends WrapperStruct> = {
+export type WrapperStructConfig<T extends ProxyShape> = {
   [K in keyof T]: StructFieldConfig;
 };
 
-// Main configuration type for BufferWrap constructor
-export type WrapperConfig<T extends WrapperStruct> = {
+export type WrapperConfigOffsets<T extends ProxyShape> = {
+  offsets: { [K in keyof T]: number };
+};
+
+export interface StrategyConfig<T extends ProxyShape> {
+  struct: WrapperStructConfig<T>;
+  offsets: WrapperConfigOffsets<T>["offsets"];
+  stride: number;
+  capacity: number;
+  alignment?: number;
+}
+
+export type StrategyConstructor<T extends ProxyShape = any> = new (
+  config: StrategyConfig<T>
+) => ProxyAccessStrategy<T>;
+
+export type WrapperConfig<T extends ProxyShape> = {
   struct: WrapperStructConfig<T>;
   capacity: number;
+  strategy: StrategyConstructor<T>;
+  strategyArgs?: any[];
   alignment?: number;
   buffer?: ArrayBuffer;
 };
 
-// Offsets definition for struct fields
-export type WrapperConfigOffsets<T extends WrapperStruct> = {
-  offsets: { [K in keyof T]: number };
-};
+// ----------------------
+// Proxy Runtime Types
+// ----------------------
+
+export interface ProxyContext {
+  currentIndex: number;
+}
+
+export type ProxyHandlerShape<T extends ProxyShape> = ProxyContext &
+  Partial<Record<keyof T, ProxyPrimitive>>;
+
+export interface ProxyAccessStrategy<T extends ProxyShape> {
+  get<K extends keyof T>(key: K, index: number): T[K];
+  set<K extends keyof T>(key: K, value: T[K], index: number): void;
+
+  readonly byteLength: number;
+
+  getBuffer(): ArrayBufferLike;
+  destroy(): void;
+}
+
+export type ManagedProxy<T extends ProxyShape> = ProxyContext & T;

@@ -9,6 +9,9 @@ describe("ProxyManager", () => {
   let access: {
     get: jest.Mock;
     set: jest.Mock;
+    getBuffer: jest.Mock;
+    destroy: jest.Mock;
+    byteLength: number;
   };
   let manager: ProxyManager<TestProxyShape>;
 
@@ -16,6 +19,9 @@ describe("ProxyManager", () => {
     access = {
       get: jest.fn((key, idx) => `${key}-${idx}`),
       set: jest.fn((key, value, idx) => {}),
+      getBuffer: jest.fn(() => new ArrayBuffer()),
+      destroy: jest.fn(() => {}),
+      byteLength: 0,
     };
     manager = new ProxyManager<TestProxyShape>(access);
   });

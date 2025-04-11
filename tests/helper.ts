@@ -1,3 +1,4 @@
+import { ArrayBufferStrategy } from "../src/strategies/ArrayBufferStrategy";
 import { WrapperConfig } from "../src/types";
 
 export type TestStruct = {
@@ -12,4 +13,5 @@ export const config: WrapperConfig<TestStruct> = {
   },
   capacity: 4,
   alignment: 4,
+  strategy: ArrayBufferStrategy,
 };
