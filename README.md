@@ -114,6 +114,7 @@ npm run build
 ```txt
 src/
   └─ BuffWrap.ts        # Main class
+  └─ ProxyManager.ts    # Proxy Owner and Maintainer
   └─ index.ts           # Main entry to the library
   └─ types.ts           # Core types used throughout
 
