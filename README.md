@@ -6,7 +6,7 @@ If you’re a developer building systems where performance and data layout matte
 
 ---
 
-## 🧭 What is this for?
+## What is this for?
 
 BufferWrap is designed for developers who need high-performance, structured memory access in JavaScript or TypeScript. If you're building:
 
@@ -22,7 +22,7 @@ It replaces verbose `DataView` and `TypedArray` logic with structured field acce
 
 ---
 
-## 📦 Installation
+## Installation
 
 ```bash
 npm install buffwrap
@@ -30,7 +30,7 @@ npm install buffwrap
 
 ---
 
-## 🔧 Basic Usage
+## Basic Usage
 
 ```ts
 import { BufferWrap } from "buffwrap";
@@ -49,17 +49,17 @@ buffer.at(0).b = [1.1, 2.2];
 
 ---
 
-## 👥 Contributors
+## Contributors
 
 - Contributions welcome! Open an issue or PR 💡
 
 ---
 
-## 🧪 Running Tests & Local Development
+## Running Tests & Local Development
 
 To run the BufferWrap test suite and work on the project locally:
 
-### 📥 Clone the Repository
+### Clone the Repository
 
 ```bash
 git clone https://github.com/Jumballaya/buffwrap.git
@@ -67,7 +67,7 @@ cd buffwrap
 npm install
 ```
 
-### 🧪 Run the Test Suite
+### Run the Test Suite
 
 BufferWrap uses **Jest** for testing. The tests are located in the `tests/` directory and are organized by feature.
 
@@ -99,7 +99,7 @@ This will automatically re-run affected tests when files change.
 
 ---
 
-### 📦 Building
+### Building
 
 You need to build the library before the tests will run against your updates. The tests run against the built code in the /dist folder.
 
@@ -109,7 +109,7 @@ npm run build
 
 ---
 
-### 📂 Project Structure
+### Project Structure
 
 ```txt
 src/
@@ -131,7 +131,7 @@ Happy hacking!
 
 ---
 
-## 📘 `BufferWrap<T>` API Reference
+## `BufferWrap<T>` API Reference
 
 ### Constructor
 
@@ -288,9 +288,9 @@ for (const item of buffer.iterate()) {
 
 ---
 
-## 🧠 How It Works
+## How It Works
 
-### 🔁 Proxy System
+### Proxy System
 
 - `at()` returns a proxy that maps property access to buffer memory.
 - Proxies store `currentIndex`, which allows updates when they're remapped (e.g., during `swap()`).
@@ -298,7 +298,7 @@ for (const item of buffer.iterate()) {
 
 ---
 
-### 🧩 Slicing
+### Slicing
 
 - `slice(start, end)` creates a new `BufferWrap` with:
   - shared buffer
@@ -310,7 +310,7 @@ for (const item of buffer.iterate()) {
 
 ---
 
-### 💾 Buffer Types
+### Buffer Types
 
 BufferWrap supports:
 
@@ -322,7 +322,7 @@ BufferWrap supports:
 
 ---
 
-## 🧼 `proxyCache` Lifecycle
+## `proxyCache` Lifecycle
 
 | Action     | Effect on proxyCache           |
 | ---------- | ------------------------------ |
@@ -335,7 +335,7 @@ BufferWrap supports:
 
 ---
 
-## ⚠️ Proxy Safety Rules
+## Proxy Safety Rules
 
 | ✅ Do This                         | ❌ Avoid This                             |
 | ---------------------------------- | ----------------------------------------- |
@@ -345,14 +345,14 @@ BufferWrap supports:
 
 ---
 
-## 🧮 Logical vs Byte Offset
+## Logical vs Byte Offset
 
 - **Logical index**: passed to `.at()`, used in `proxyCache`
 - **Byte offset**: `baseOffset + stride * idx`, used for memory math
 
 ---
 
-## 🔁 `copyInto` vs `move` vs `swap`
+## `copyInto` vs `move` vs `swap`
 
 | Method     | Operation       | Proxy Remap | Mutation Scope  |
 | ---------- | --------------- | ----------- | --------------- |
@@ -362,7 +362,7 @@ BufferWrap supports:
 
 ---
 
-## 🔍 Error Reference
+## Error Reference
 
 | Message                                                             | Method        |
 | ------------------------------------------------------------------- | ------------- |
@@ -378,7 +378,7 @@ BufferWrap supports:
 
 ---
 
-### 💡 Logical Index vs Byte Offset
+### Logical Index vs Byte Offset
 
 - **Logical index**: the position used with `.at()` (e.g., 0, 1, 2)
 - **Byte offset**: `baseOffset + idx * stride` — memory math for `DataView`
@@ -386,7 +386,7 @@ BufferWrap supports:
 
 ---
 
-### 💡 Frequently Asked Questions
+### Frequently Asked Questions
 
 ---
 
@@ -469,6 +469,6 @@ This allows high performance without sacrificing developer ergonomics. It also m
 
 ---
 
-## 📄 License
+## License
 
 MIT License — free to use, modify, and distribute.
