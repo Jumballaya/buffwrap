@@ -1,3 +1,6 @@
+[![View Docs](https://img.shields.io/badge/docs-view%20docs-blue)](https://jumballaya.github.io/buffwrap/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 # BufferWrap
 
 BufferWrap is a TypeScript library that simplifies working with structured binary data inside ArrayBuffers. It provides a proxy-based interface over raw buffers, making it ideal for GPU-style data pipelines, interleaved memory formats, particle systems, WebGPU/WebGL data, and more.
