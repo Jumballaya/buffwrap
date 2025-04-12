@@ -61,6 +61,7 @@ export type TypedArrayConstructor =
 export type ArrayType = InstanceType<TypedArrayConstructor>;
 
 export type BufferType =
+  | Buffer
   | ArrayBuffer
   | SharedArrayBuffer
   | WebGLBuffer

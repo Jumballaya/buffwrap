@@ -74,6 +74,10 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
     return this.strategy.getByteLength();
   }
 
+  public get length(): number {
+    return this.config.capacity;
+  }
+
   public getStrategy() {
     return this.strategy;
   }
