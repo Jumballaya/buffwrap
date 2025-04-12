@@ -1,6 +1,6 @@
 {
   "name": "buffwrap",
-  "version": "0.9.9",
+  "version": "1.0.0",
   "description": "Abstraction over arrays of typed structs",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -30,7 +30,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^9.23.0",
     "@types/jest": "^29.5.14",
