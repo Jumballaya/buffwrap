@@ -8,6 +8,20 @@
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./node": {
+      "import": "./dist/index.node.mjs",
+      "require": "./dist/index.node.js"
+    },
+    "./browser": {
+      "import": "./dist/index.browser.mjs",
+      "require": "./dist/index.browser.js"
+    }
+  },
   "scripts": {
     "build": "tsup",
     "test": "jest --verbose --silent=false",

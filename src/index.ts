@@ -1,3 +1,2 @@
-import { BufferWrap } from "./BufferWrap";
-
-export default BufferWrap;
+export * from "./BufferWrap";
+export * from "./strategies/ArrayBufferStrategy";
