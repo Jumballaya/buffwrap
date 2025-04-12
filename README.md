@@ -1,11 +1,19 @@
 [![View Docs](https://img.shields.io/badge/docs-view%20docs-blue)](https://jumballaya.github.io/buffwrap/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/buffwrap)](https://www.npmjs.com/package/buffwrap)
 
 # BufferWrap
 
 BufferWrap is a TypeScript library that simplifies working with structured binary data inside ArrayBuffers. It provides a proxy-based interface over raw buffers, making it ideal for GPU-style data pipelines, interleaved memory formats, particle systems, WebGPU/WebGL data, and more.
 
 If you’re a developer building systems where performance and data layout matter, BufferWrap will save you time and eliminate bugs caused by manual memory handling. It offers the power of C-like struct access in JavaScript/TypeScript, with modern tools like generator-based iteration, lazy attribute extraction, and full support for shared memory.
+
+---
+
+## Links
+
+- 📦 [View on npm](https://www.npmjs.com/package/buffwrap)
+- 📘 [View Docs](https://jumballaya.github.io/buffwrap/)
 
 ---
 

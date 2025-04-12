@@ -17,5 +17,6 @@
   "excludeExternals": true,
   "tsconfig": "tsconfig.json",
   "name": "buffwrap",
-  "readme": "README.md"
+  "readme": "README.md",
+  "footer": "[BufferWrap on npm](https://www.npmjs.com/package/buffwrap)"
 }
