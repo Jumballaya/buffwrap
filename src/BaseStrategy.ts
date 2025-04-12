@@ -74,7 +74,7 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
     }
   }
 
-  public from<OB extends BufferType = B>(
+  public from<OB extends BufferType>(
     target: CopyTarget<T, OB>,
     sourceStart = 0,
     sourceEnd = this.capacity,

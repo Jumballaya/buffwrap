@@ -136,7 +136,7 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
   //  Take in an interleved buffer or struct of buffers
   //  and use that as the data for this configured
   //  BuffWrap
-  public from(buffer: ArrayBuffer | Partial<BufferList<T>>) {
+  public from<OB extends BufferType>(buffer: CopyTarget<T, OB>) {
     this.strategy.from(buffer);
     this.proxyManager.clear();
     this.buffers = {} as BufferList<T>;

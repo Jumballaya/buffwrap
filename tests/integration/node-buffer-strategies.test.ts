@@ -37,6 +37,34 @@ describe("[E2E Strategies] NodeBufferStrategy", () => {
     expect(target.at(0).b[1]).toBeCloseTo(8.8);
   });
 
+  test("Can from and to NodeBufferStrategy and ArrayBufferStrategy", () => {
+    const struct = {
+      a: { length: 1, type: Uint8Array },
+      b: { length: 2, type: Float32Array },
+    };
+
+    const source = new BufferWrap<TestStructBuffer, Buffer>({
+      struct,
+      capacity: 1,
+      strategy: NodeBufferStrategy,
+    });
+
+    const target = new BufferWrap<TestStruct, ArrayBuffer>({
+      struct,
+      capacity: 1,
+      strategy: ArrayBufferStrategy,
+    });
+
+    source.at(0).a = new Uint8Array([123]);
+    source.at(0).b = new Float32Array([9.9, 8.8]);
+
+    target.from(source);
+
+    expect(target.at(0).a).toBe(123);
+    expect(target.at(0).b[0]).toBeCloseTo(9.9);
+    expect(target.at(0).b[1]).toBeCloseTo(8.8);
+  });
+
   test("NodeBufferStrategy full roundtrip: from -> insert -> move -> copyInto -> verify", () => {
     const struct = {
       a: { length: 1, type: Uint8Array },
