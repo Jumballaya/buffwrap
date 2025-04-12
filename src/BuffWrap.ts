@@ -3,11 +3,12 @@ import type {
   ArrayType,
   BufferList,
   WrapperConfig,
-  WrapperConfigOffsets,
   WrapperStructConfig,
   ManagedProxy,
   ProxyAccessStrategy,
   ProxyShape,
+  BufferType,
+  CopyTarget,
 } from "./types";
 
 //
@@ -17,15 +18,16 @@ import type {
 //    This could be particles in a particle system, messages passed from
 //    web workers, information from a WebGPU compute pipeline, lighting
 //    data in a uniform buffer, etc. etc.
-export class BufferWrap<T extends ProxyShape> {
-  private config: WrapperConfig<T> & WrapperConfigOffsets<T>;
-  private proxyManager: ProxyManager<T>;
-  private strategy: ProxyAccessStrategy<T>;
+export class BufferWrap<T extends ProxyShape, B extends BufferType> {
+  private config: WrapperConfig<T, B>;
+  private strategy: ProxyAccessStrategy<T, B>;
+  private proxyManager: ProxyManager<T, B>;
   private buffers: BufferList<T> = {} as BufferList<T>; // @TODO: better typing
-  private _stride = 0;
   private baseOffset = 0;
+  private _stride = 0;
 
-  constructor(config: WrapperConfig<T> & Partial<WrapperConfigOffsets<T>>) {
+  constructor(config: WrapperConfig<T, B>) {
+    this.config = config;
     const alignment = config.alignment ?? 4;
 
     if (!config.offsets) {
@@ -34,34 +36,31 @@ export class BufferWrap<T extends ProxyShape> {
         alignment
       );
       this._stride = stride;
-      this.config = { ...config, offsets: offsets };
-    } else {
-      this.config = config as WrapperConfig<T> & WrapperConfigOffsets<T>;
-      this._stride = Object.entries(this.config.offsets).reduce(
-        (acc, [key, val]) => {
-          const { length, type } = this.config.struct[key as keyof T];
-          return Math.max(acc, val + length * type.BYTES_PER_ELEMENT);
-        },
-        0
-      );
+      this.config.offsets = offsets;
     }
 
     this.strategy = new config.strategy({
       struct: this.config.struct,
-      offsets: this.config.offsets,
-      stride: this._stride,
+      offsets: this.config.offsets!,
+      stride: this.stride,
       capacity: this.config.capacity,
       alignment: this.config.alignment,
+      ...(config.strategyArgs ?? {}),
     });
-    this.proxyManager = new ProxyManager<T>(this.strategy);
-  }
 
-  public get byteLength(): number {
-    return this.strategy.byteLength;
+    this.proxyManager = new ProxyManager<T, B>(this.strategy);
   }
 
   public get stride(): number {
-    return this._stride;
+    return this.strategy.getStride();
+  }
+
+  public get byteLength(): number {
+    return this.strategy.getByteLength();
+  }
+
+  public getStrategy() {
+    return this.strategy;
   }
 
   public attributeStride(name: string): number {
@@ -82,7 +81,7 @@ export class BufferWrap<T extends ProxyShape> {
         `at(): Index ${idx} is out of bounds (capacity: ${this.config.capacity}).`
       );
     }
-    const logicalIndex = idx + this.baseOffset / this._stride;
+    const logicalIndex = this.getLogicalIndex(idx);
     return this.proxyManager.getProxy(logicalIndex);
   }
 
@@ -97,13 +96,15 @@ export class BufferWrap<T extends ProxyShape> {
     }
 
     const { type, length } = this.config.struct[key];
-    const offset = this.config.offsets[key];
     const buffer = new type(length * this.config.capacity);
 
     for (let i = 0; i < this.config.capacity; i++) {
-      const start = this._stride * i + offset;
-      const end = start + length * type.BYTES_PER_ELEMENT;
-      buffer.set(new type(this.buffer.slice(start, end)), i * length);
+      const value = this.strategy.get(key, i);
+      if (typeof value === "number") {
+        buffer[i] = value;
+      } else {
+        buffer.set(value as number[], i * length);
+      }
     }
 
     this.buffers[key] = buffer;
@@ -117,46 +118,9 @@ export class BufferWrap<T extends ProxyShape> {
   //  and use that as the data for this configured
   //  BuffWrap
   public from(buffer: ArrayBuffer | Partial<BufferList<T>>) {
-    // Actual ArrayBuffer class
-    if (buffer instanceof ArrayBuffer) {
-      this.buffer = buffer.slice();
-      this.view = new DataView(this.buffer);
-      this.buffers = {} as BufferList<T>;
-      this.proxyManager.clear();
-      return;
-    }
-
-    // TypedArray (e.g. Float32Array, Uint8Array, etc.)
-    if (buffer.buffer) {
-      this.buffer = buffer.buffer.slice().buffer;
-      this.view = new DataView(this.buffer);
-      this.buffers = {} as BufferList<T>;
-      this.proxyManager.clear();
-      return;
-    }
-
-    // Otherwise we have the partial bufferlist to build from
-    const keys: Array<keyof T> = Object.keys(buffer);
-    for (const k of keys) {
-      const inDataBuffer = buffer[k]!;
-      const stride = this._stride;
-      const offset = this.config.offsets[k];
-      const { type, length } = this.config.struct[k];
-      for (let i = 0; i < this.config.capacity; i++) {
-        const ptr = stride * i + offset;
-        new Uint8Array(this.buffer, ptr, length * type.BYTES_PER_ELEMENT).set(
-          new Uint8Array(
-            inDataBuffer.buffer,
-            i * length * type.BYTES_PER_ELEMENT,
-            length * type.BYTES_PER_ELEMENT
-          ),
-          0
-        );
-      }
-    }
-
-    this.buffers = {} as BufferList<T>;
+    this.strategy.from(buffer);
     this.proxyManager.clear();
+    this.buffers = {} as BufferList<T>;
   }
 
   // Move an element from one location to another.
@@ -170,54 +134,66 @@ export class BufferWrap<T extends ProxyShape> {
         ? -1
         : fromId.currentIndex
       : (fromId as number);
-    typeof fromId === "number" ? fromId : (fromId.currentIndex as number) ?? -1;
 
     if (from === toId) return;
     if (from === undefined) {
       throw new Error(`move(): Source index not found.`);
     }
 
+    // Check only within the bounds of the slice
+    const sliceStart = this.baseOffset / this._stride;
+    const sliceEnd = sliceStart + this.config.capacity;
     if (
-      from < 0 ||
-      toId < 0 ||
-      from >= this.config.capacity ||
-      toId >= this.config.capacity
+      from < sliceStart ||
+      from >= sliceEnd ||
+      toId < sliceStart ||
+      toId >= sliceEnd
     ) {
       throw new Error(
-        `move(): Indices out of bounds (source: ${from}, target: ${toId}, capacity: ${this.config.capacity}).`
+        `move(): Indices out of bounds for slice (from: ${from}, to: ${toId}, slice range: ${sliceStart}-${
+          sliceEnd - 1
+        })`
       );
     }
-
-    const fromStart = this.getByteOffset(from);
-    const toStart = this.getByteOffset(toId);
-
-    new Uint8Array(this.buffer, toStart, this._stride).set(
-      new Uint8Array(this.buffer, fromStart, this._stride)
-    );
 
     this.proxyManager.move(from, toId);
   }
 
-  public slice(start: number, end = this.config.capacity): BufferWrap<T> {
-    const capacity = Math.max(0, end - start);
+  //
+  //  Generates a slice (like a view) of the selected range of
+  //  memory, giving you back a scoped BufferWrap<T> that you
+  //  can edit and allow for parent and/or child to update sections
+  public slice(start: number, end = this.config.capacity): BufferWrap<T, B> {
+    if (start < 0 || end > this.config.capacity || start >= end) {
+      throw new Error(
+        `slice(): Invalid range (start: ${start}, end: ${end}, capacity: ${this.config.capacity})`
+      );
+    }
+
+    const capacity = end - start;
     const config = {
       ...this.config,
       capacity,
-      buffer: this.buffer,
     };
 
-    const slice = new BufferWrap<T>(config);
-    slice.view = this.view;
+    // Create a new BufferWrap
+    // But avoid invoking the constructor altogether
+    // this also avoids creating another strategy
+    const slice = Object.create(BufferWrap.prototype) as BufferWrap<T, B>;
+    slice.config = config;
+    slice._stride = this._stride;
     slice.baseOffset = this.baseOffset + start * this._stride;
+    slice.strategy = this.strategy;
     slice.proxyManager = this.proxyManager;
+    slice.buffers = {} as BufferList<T>;
     return slice;
   }
 
   // if you dont insert an ArrayBuffer, the assumption is you are inserting
-  // only 1 element
-  public insert(
+  // only 1 element.
+  public insert<OB extends BufferType = B>(
     idx: number,
-    data: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>
+    data: CopyTarget<T, OB>
   ) {
     if (idx < 0 || idx > this.config.capacity) {
       throw new Error(
@@ -226,81 +202,43 @@ export class BufferWrap<T extends ProxyShape> {
     }
 
     const insertCount = data instanceof BufferWrap ? data.config.capacity : 1;
-    const requiredCapacity = this.config.capacity + insertCount;
-    this.resizeBufferIfNeeded(insertCount);
+    const newCapacity = this.config.capacity + insertCount;
 
-    // Move existing data forward to make space
+    this.strategy.ensureCapacity(newCapacity);
+
+    // Move existing data forward
     for (let i = this.config.capacity - 1; i >= idx; i--) {
-      const fromOffset = this.getByteOffset(i);
-      const toOffset = this.getByteOffset(i + insertCount);
-      new Uint8Array(this.buffer, toOffset, this._stride).set(
-        new Uint8Array(this.buffer, fromOffset, this._stride)
-      );
+      this.strategy.move(i, i + insertCount);
+    }
+
+    if (data instanceof BufferWrap) {
+      const source = data.getStrategy();
+      this.strategy.from(source, 0, insertCount);
+    } else {
+      this.strategy.from(data, idx);
     }
 
     this.proxyManager.insert(idx, insertCount);
-    this.setCapacity(requiredCapacity);
-
-    if (data instanceof BufferWrap) {
-      this.insertFromBufferWrap(data, idx);
-      return;
-    }
-
-    if (data instanceof ArrayBuffer) {
-      this.insertFromArrayBuffer(data, idx);
-      return;
-    }
-
-    this.insertFromBufferList(data, idx);
+    this.setCapacity(newCapacity);
   }
 
-  public copyInto(
-    target: ArrayBuffer | Partial<BufferList<T>> | BufferWrap<T>
-  ) {
-    if (target instanceof ArrayBuffer) {
-      if (target.byteLength < this.buffer.byteLength) {
-        throw new Error(
-          "Target ArrayBuffer is too small to hold the copied data"
-        );
-      }
-      new Uint8Array(target).set(new Uint8Array(this.buffer));
-      return;
-    }
+  // clone or extract the current buffer into a CopyTarget
+  public copyInto<OB extends BufferType = B>(target: CopyTarget<T, OB>) {
+    const sourceStart = 0;
+    const sourceEnd = this.config.capacity;
 
     if (target instanceof BufferWrap) {
       if (target.config.capacity < this.config.capacity) {
         throw new Error(
-          "Target BufferWrap is too small to hold the copied data"
+          `copyInto(): Target BufferWrap capacity (${target.config.capacity}) is smaller than source (${this.config.capacity})`
         );
       }
-      const keys = Object.keys(this.config.struct) as (keyof T)[];
-      for (let i = 0; i < this.config.capacity; i++) {
-        target.proxyManager.copy(i, i, keys);
-      }
-      return;
     }
 
-    for (const k in target) {
-      const buffer = target[k];
-      if (!buffer) continue;
-      const { type, length } = this.config.struct[k];
-      const offset = this.config.offsets[k];
-      const bufferView = new Uint8Array(buffer.buffer);
-      for (let i = 0; i < this.config.capacity; i++) {
-        const srcOffset = this.getByteOffset(i) + offset;
-        const dstOffset = i * length * type.BYTES_PER_ELEMENT;
-        bufferView.set(
-          new Uint8Array(
-            this.buffer,
-            srcOffset,
-            length * type.BYTES_PER_ELEMENT
-          ),
-          dstOffset
-        );
-      }
-    }
+    this.strategy.clone(target, sourceStart, sourceEnd);
   }
 
+  // Swap the contents of 2 structs given their ids
   public swap(a: number, b: number) {
     if (a === b) return;
     if (
@@ -313,17 +251,7 @@ export class BufferWrap<T extends ProxyShape> {
         `swap(): Indices out of bounds (a: ${a}, b: ${b}, capacity: ${this.config.capacity})`
       );
     }
-
-    const aOffset = this.getByteOffset(a);
-    const bOffset = this.getByteOffset(b);
-
-    for (let i = 0; i < this._stride; i++) {
-      const byteA = this.view.getUint8(aOffset + i);
-      const byteB = this.view.getUint8(bOffset + i);
-      this.view.setUint8(aOffset + i, byteB);
-      this.view.setUint8(bOffset + i, byteA);
-    }
-
+    this.strategy.swap(a, b);
     this.proxyManager.swap(a, b);
   }
 
@@ -336,90 +264,13 @@ export class BufferWrap<T extends ProxyShape> {
   //
   // Private internal helper methods
   //
-  private getByteOffset(idx: number): number {
-    return this.baseOffset + idx * this._stride;
-  }
-
-  private resizeBufferIfNeeded(additional: number) {
-    const required = (this.config.capacity + additional) * this._stride;
-    if (required <= this.buffer.byteLength) return;
-
-    const newSize = Math.max(this.buffer.byteLength * 2, required);
-    const newBuffer = new ArrayBuffer(newSize);
-    new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
-    this.buffer = newBuffer;
-    this.view = new DataView(this.buffer);
-  }
-
   private setCapacity(newCapacity: number) {
     this.config.capacity = newCapacity;
     this.buffers = {} as BufferList<T>;
   }
 
-  private insertFromBufferWrap(source: BufferWrap<T>, destIndex: number) {
-    const sameStruct =
-      JSON.stringify(this.config.struct) ===
-      JSON.stringify(source.config.struct);
-    const sameTypes = Object.keys(this.config.struct).every(
-      (k) => this.config.struct[k].type === source.config.struct[k].type
-    );
-
-    if (!sameStruct || !sameTypes) {
-      throw new Error(
-        "insert(): BufferWrap struct mismatch between source and target."
-      );
-    }
-
-    const isSelfSlice = source.buffer === this.buffer;
-    const temp = isSelfSlice
-      ? new Uint8Array(source._stride * source.config.capacity)
-      : null;
-    if (isSelfSlice) {
-      temp?.set(
-        new Uint8Array(
-          source.buffer,
-          source.baseOffset,
-          source._stride * source.config.capacity
-        )
-      );
-    }
-
-    for (let i = 0; i < source.config.capacity; i++) {
-      const fromOffset = isSelfSlice
-        ? i * source._stride
-        : source.baseOffset + i * source._stride;
-      const toOffset = (destIndex + i) * this._stride;
-      new Uint8Array(this.buffer, toOffset, this._stride).set(
-        isSelfSlice && temp !== null
-          ? new Uint8Array(temp?.buffer, fromOffset, this._stride)
-          : new Uint8Array(source.buffer, fromOffset, this._stride)
-      );
-    }
-  }
-
-  private insertFromArrayBuffer(source: ArrayBuffer, at: number) {
-    if (source.byteLength !== this._stride) {
-      throw new Error(
-        `insert(): ArrayBuffer length mismatch (expected: ${this._stride}, received: ${source.byteLength}).`
-      );
-    }
-    new Uint8Array(this.buffer, at * this._stride, source.byteLength).set(
-      new Uint8Array(source)
-    );
-  }
-
-  private insertFromBufferList(data: Partial<BufferList<T>>, at: number) {
-    for (const key in data) {
-      const value = data[key];
-      if (!value) continue;
-      const { type } = this.config.struct[key];
-      if (!(value instanceof type)) {
-        throw new Error(
-          `insert(): Invalid type for field "${key}". Expected ${type.name}, received ${value.constructor.name}.`
-        );
-      }
-      this.strategy.set(key, value as T[typeof key], at);
-    }
+  private getLogicalIndex(localIdx: number): number {
+    return localIdx + this.baseOffset / this._stride;
   }
 }
 
@@ -431,10 +282,10 @@ function alignOffset(offset: number, alignment: number): number {
  * Computes byte offsets and stride for a struct definition,
  * aligning each field appropriately.
  */
-function generateOffsetsAndStride<T extends ProxyShape>(
+function generateOffsetsAndStride<T extends ProxyShape, B extends BufferType>(
   struct: WrapperStructConfig<T>,
   alignment: number
-): [WrapperConfigOffsets<T>["offsets"], number] {
+): [WrapperConfig<T, B>["offsets"], number] {
   const offsets: Record<string, number> = {};
   let stride = 0;
   for (const key in struct) {
@@ -446,7 +297,7 @@ function generateOffsetsAndStride<T extends ProxyShape>(
     stride += length * typeAlignment;
   }
 
-  return [offsets as WrapperConfigOffsets<T>["offsets"], stride];
+  return [offsets as WrapperConfig<T, B>["offsets"], stride];
 }
 
 function isProxy<T extends ProxyShape>(value: any): value is ManagedProxy<T> {

@@ -2,6 +2,8 @@
 // Core Primitive Types
 // ----------------------
 
+import type { BufferWrap } from "./BuffWrap";
+
 // Generic fixed-length tuple utility
 export type Tuple<
   T,
@@ -58,6 +60,18 @@ export type TypedArrayConstructor =
 
 export type ArrayType = InstanceType<TypedArrayConstructor>;
 
+export type BufferType =
+  | ArrayBuffer
+  | SharedArrayBuffer
+  | WebGLBuffer
+  | AudioBuffer;
+
+export type CopyTarget<T extends ProxyShape, B extends BufferType> =
+  | ProxyAccessStrategy<T, B>
+  | BufferWrap<T, B>
+  | Partial<BufferList<T>>
+  | BufferType;
+
 export type BufferList<T extends ProxyShape> = {
   [K in keyof T]?: ArrayType;
 };
@@ -71,26 +85,25 @@ export type WrapperStructConfig<T extends ProxyShape> = {
   [K in keyof T]: StructFieldConfig;
 };
 
-export type WrapperConfigOffsets<T extends ProxyShape> = {
-  offsets: { [K in keyof T]: number };
-};
-
 export interface StrategyConfig<T extends ProxyShape> {
   struct: WrapperStructConfig<T>;
-  offsets: WrapperConfigOffsets<T>["offsets"];
+  offsets: { [K in keyof T]: number };
   stride: number;
   capacity: number;
   alignment?: number;
+  extensions?: Record<string, any>;
 }
 
-export type StrategyConstructor<T extends ProxyShape = any> = new (
-  config: StrategyConfig<T>
-) => ProxyAccessStrategy<T>;
+export type StrategyConstructor<
+  T extends ProxyShape = any,
+  B extends BufferType = ArrayBuffer
+> = new (config: StrategyConfig<T>) => ProxyAccessStrategy<T, B>;
 
-export type WrapperConfig<T extends ProxyShape> = {
+export type WrapperConfig<T extends ProxyShape, B extends BufferType> = {
   struct: WrapperStructConfig<T>;
   capacity: number;
-  strategy: StrategyConstructor<T>;
+  strategy: StrategyConstructor<T, B>;
+  offsets?: { [K in keyof T]: number };
   strategyArgs?: any[];
   alignment?: number;
   buffer?: ArrayBuffer;
@@ -107,14 +120,33 @@ export interface ProxyContext {
 export type ProxyHandlerShape<T extends ProxyShape> = ProxyContext &
   Partial<Record<keyof T, ProxyPrimitive>>;
 
-export interface ProxyAccessStrategy<T extends ProxyShape> {
-  get<K extends keyof T>(key: K, index: number): T[K];
-  set<K extends keyof T>(key: K, value: T[K], index: number): void;
+export interface ProxyAccessStrategy<
+  T extends ProxyShape,
+  B extends BufferType
+> {
+  get<K extends keyof T>(key: K, index: number): T[K]; // Gets a single field's data on a single struct at index (e.g. get position struct #6: [3,2,1])
+  set<K extends keyof T>(key: K, value: T[K], index: number): void; // Sets a single field's data on a single struct at index (e.g. set position as [1,2,3] on struct #6)
 
-  readonly byteLength: number;
+  getByteLength(): number; // return the full byteLength of the underlying buffer
+  getStride(): number; // returns the fully aligned stride
+  getBuffer(): B; // returns the raw buffer
+  ensureCapacity(newCapacity: number): void; // expand space if needed, or handle it somehow
+  destroy(): void; // cleanup method
 
-  getBuffer(): ArrayBufferLike;
-  destroy(): void;
+  move(from: number, to: number): void; // overwrites the data in 'to' with the data in 'from'
+  swap(a: number, b: number): void; // swaps the struct data between a and b
+  insertBlank(index: number, count: number): void; // inserts a 'count' amount of blank struct at index
+
+  from<OB extends BufferType = B>(
+    target: CopyTarget<T, OB>,
+    from?: number,
+    to?: number
+  ): void; // writes data from target -> this
+  clone<OB extends BufferType = B>(
+    target: CopyTarget<T, OB>,
+    from?: number,
+    to?: number
+  ): void; // writes data from this -> target | from and to default to 0 and capacity
 }
 
 export type ManagedProxy<T extends ProxyShape> = ProxyContext & T;

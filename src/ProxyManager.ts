@@ -1,4 +1,5 @@
 import {
+  BufferType,
   ManagedProxy,
   ProxyAccessStrategy,
   ProxyContext,
@@ -6,11 +7,11 @@ import {
   ProxyShape,
 } from "./types";
 
-export class ProxyManager<T extends ProxyShape> {
+export class ProxyManager<T extends ProxyShape, B extends BufferType> {
   private cache = new Map<number, ManagedProxy<T>>();
-  private access: ProxyAccessStrategy<T>;
+  private access: ProxyAccessStrategy<T, B>;
 
-  constructor(access: ProxyAccessStrategy<T>) {
+  constructor(access: ProxyAccessStrategy<T, B>) {
     this.access = access;
   }
 

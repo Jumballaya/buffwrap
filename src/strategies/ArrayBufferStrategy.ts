@@ -1,119 +1,88 @@
-import { ProxyAccessStrategy, ProxyShape, StrategyConfig } from "../types";
-import { TypedArrayConstructor, WrapperStructConfig } from "../types";
+import { BaseStrategy } from "../BaseStrategy";
+import { ProxyShape, StrategyConfig } from "../types";
 
-export class ArrayBufferStrategy<T extends ProxyShape>
-  implements ProxyAccessStrategy<T>
-{
+export class ArrayBufferStrategy<T extends ProxyShape> extends BaseStrategy<
+  T,
+  ArrayBuffer
+> {
   private buffer: ArrayBuffer;
   private view: DataView;
-  private struct: WrapperStructConfig<T>;
-  private offsets: { [K in keyof T]: number };
-  private stride: number;
-  public readonly byteLength;
 
   constructor(config: StrategyConfig<T>) {
-    this.struct = config.struct;
-    this.offsets = config.offsets;
-    this.stride = config.stride;
-
-    this.stride = Object.entries(this.offsets).reduce((acc, [key, val]) => {
-      const { length, type } = this.struct[key as keyof T];
-      return Math.max(acc, val + length * type.BYTES_PER_ELEMENT);
-    }, 0);
-
-    this.byteLength = this.stride * config.capacity;
-    this.buffer = new ArrayBuffer(this.byteLength);
+    super(config);
+    const byteLength = config.capacity * config.stride;
+    this.buffer = new ArrayBuffer(byteLength);
     this.view = new DataView(this.buffer);
   }
 
-  public get<K extends keyof T>(key: K, index: number): T[K] {
-    const { length, type } = this.struct[key];
-    const offset = this.offsets[key] + index * this.stride;
+  get<K extends keyof T>(key: K, index: number): T[K] {
+    const { offsets, struct, stride } = this.config;
+    const offset = index * stride + offsets[key];
+    const { type, length } = struct[key];
 
     if (length === 1) {
-      return this.readData(type, offset) as T[K];
+      return this.readPrimitive(this.view, type, offset) as T[K];
     }
 
-    const result = new Array(length);
+    const res = new Array(length) as number[];
     for (let i = 0; i < length; i++) {
-      result[i] = this.readData(type, offset + i * type.BYTES_PER_ELEMENT);
+      res[i] = this.readPrimitive(this.view, type, offset + i);
     }
-    return result as T[K];
+    return res as T[K];
   }
 
-  public set<K extends keyof T>(key: K, value: T[K], index: number): void {
-    const { length, type } = this.struct[key];
-    const offset = this.offsets[key] + index * this.stride;
+  set<K extends keyof T>(key: K, value: T[K], index: number): void {
+    const { offsets, struct, stride } = this.config;
+    const offset = index * stride + offsets[key];
+    const { type, length } = struct[key];
 
-    if (typeof value === "number") {
-      this.writeData(type, offset, value);
-    } else if (value instanceof Array) {
-      for (let i = 0; i < length; i++) {
-        this.writeData(
-          type,
-          offset + i * type.BYTES_PER_ELEMENT,
-          value[i] as number
-        );
-      }
+    if (length === 1) {
+      this.writePrimitive(this.view, type, offset, value as number);
+      return;
+    }
+
+    const arr = value as number[];
+    for (let i = 0; i < length; i++) {
+      this.writePrimitive(
+        this.view,
+        type,
+        offset + i * type.BYTES_PER_ELEMENT,
+        arr[i]
+      );
     }
   }
 
-  public getBuffer(): ArrayBuffer {
+  getByteLength(): number {
+    return this.buffer.byteLength;
+  }
+
+  getStride(): number {
+    return this.config.stride;
+  }
+
+  getBuffer(): ArrayBuffer {
     return this.buffer;
   }
 
-  public destroy(): void {}
+  ensureCapacity(newCapacity: number): void {
+    const oldCapacity = this.capacity;
+    if (newCapacity <= oldCapacity) return;
 
-  private readData(type: TypedArrayConstructor, offset: number): number {
-    switch (type) {
-      case Float32Array:
-        return this.view.getFloat32(offset, true);
-      case Uint8Array:
-        return this.view.getUint8(offset);
-      case Int8Array:
-        return this.view.getInt8(offset);
-      case Uint16Array:
-        return this.view.getUint16(offset, true);
-      case Int16Array:
-        return this.view.getInt16(offset, true);
-      case Uint32Array:
-        return this.view.getUint32(offset, true);
-      case Int32Array:
-        return this.view.getInt32(offset, true);
-      default:
-        throw new Error(`Unsupported type: ${type.name}`);
-    }
+    const { stride } = this.config;
+    const newByteLength = newCapacity * stride;
+    const newBuffer = new ArrayBuffer(newByteLength);
+    const newView = new DataView(newBuffer);
+
+    new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
+
+    this.buffer = newBuffer;
+    this.view = newView;
+    this.capacity = newCapacity;
   }
 
-  private writeData(
-    type: TypedArrayConstructor,
-    offset: number,
-    value: number
-  ) {
-    switch (type) {
-      case Float32Array:
-        this.view.setFloat32(offset, value, true);
-        break;
-      case Uint8Array:
-        this.view.setUint8(offset, value);
-        break;
-      case Int8Array:
-        this.view.setInt8(offset, value);
-        break;
-      case Uint16Array:
-        this.view.setUint16(offset, value, true);
-        break;
-      case Int16Array:
-        this.view.setInt16(offset, value, true);
-        break;
-      case Uint32Array:
-        this.view.setUint32(offset, value, true);
-        break;
-      case Int32Array:
-        this.view.setInt32(offset, value, true);
-        break;
-      default:
-        throw new Error("Unsupported type");
-    }
+  destroy(): void {
+    this.buffer = new ArrayBuffer(0);
+    this.view = new DataView(this.buffer);
+    this.capacity = 0;
   }
 }

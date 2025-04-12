@@ -40,7 +40,7 @@ type TestStruct = {
   variable: number[];
 };
 
-const config: WrapperConfig<TestStruct> = {
+const config: WrapperConfig<TestStruct, ArrayBuffer> = {
   struct: {
     scalar: { length: 1, type: Float32Array },
     vec2: { length: 2, type: Float32Array },

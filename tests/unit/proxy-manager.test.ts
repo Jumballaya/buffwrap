@@ -11,9 +11,16 @@ describe("ProxyManager", () => {
     set: jest.Mock;
     getBuffer: jest.Mock;
     destroy: jest.Mock;
-    byteLength: number;
+    getByteLength: jest.Mock;
+    getStride: jest.Mock;
+    ensureCapacity: jest.Mock;
+    move: jest.Mock;
+    swap: jest.Mock;
+    insertBlank: jest.Mock;
+    from: jest.Mock;
+    clone: jest.Mock;
   };
-  let manager: ProxyManager<TestProxyShape>;
+  let manager: ProxyManager<TestProxyShape, ArrayBuffer>;
 
   beforeEach(() => {
     access = {
@@ -21,9 +28,16 @@ describe("ProxyManager", () => {
       set: jest.fn((key, value, idx) => {}),
       getBuffer: jest.fn(() => new ArrayBuffer()),
       destroy: jest.fn(() => {}),
-      byteLength: 0,
+      getByteLength: jest.fn(() => 0),
+      getStride: jest.fn(() => 0),
+      ensureCapacity: jest.fn(() => {}),
+      move: jest.fn(() => {}),
+      swap: jest.fn(() => {}),
+      insertBlank: jest.fn(() => {}),
+      from: jest.fn(() => {}),
+      clone: jest.fn(() => {}),
     };
-    manager = new ProxyManager<TestProxyShape>(access);
+    manager = new ProxyManager<TestProxyShape, ArrayBuffer>(access);
   });
 
   describe("getProxy", () => {

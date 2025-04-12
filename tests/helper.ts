@@ -6,7 +6,7 @@ export type TestStruct = {
   b: [number, number];
 };
 
-export const config: WrapperConfig<TestStruct> = {
+export const config: WrapperConfig<TestStruct, ArrayBuffer> = {
   struct: {
     a: { length: 1, type: Uint8Array },
     b: { length: 2, type: Float32Array },
