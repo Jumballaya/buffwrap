@@ -1,4 +1,6 @@
 {
+  "include": ["src"],
+  "exclude": ["tests", "**/*.test.ts", "tsup.config.ts", "node_modules", "dist"],
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig to read more about this file */
 

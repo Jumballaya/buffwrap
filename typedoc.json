@@ -1,0 +1,21 @@
+{
+  "entryPoints": [
+    "src/index.ts",
+    "src/index.browser.ts",
+    "src/index.node.ts"
+  ],
+  "entryPointStrategy": "expand",
+  "exclude": [
+    "**/tests/**/*",
+    "**/*.test.ts",
+    "**/__tests__/**/*"
+  ],
+  "out": "docs",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "tsconfig": "tsconfig.json",
+  "name": "buffwrap",
+  "readme": "README.md"
+}

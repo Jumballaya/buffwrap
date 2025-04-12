@@ -1,3 +1,4 @@
+/** @module Platform: All */
 export * from "./BufferWrap";
 export * from "./strategies/ArrayBufferStrategy";
 export * from "./BaseStrategy";
