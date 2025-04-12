@@ -2,7 +2,7 @@
 // Core Primitive Types
 // ----------------------
 
-import type { BufferWrap } from "./BuffWrap";
+import type { BufferWrap } from "./BufferWrap";
 
 // Generic fixed-length tuple utility
 export type Tuple<

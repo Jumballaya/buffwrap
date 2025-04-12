@@ -1,3 +1,3 @@
-import { BufferWrap } from "./BuffWrap";
+import { BufferWrap } from "./BufferWrap";
 
 export default BufferWrap;

@@ -1,4 +1,4 @@
-import { BufferWrap } from "./BuffWrap";
+import { BufferWrap } from "./BufferWrap";
 import {
   BufferList,
   BufferType,
