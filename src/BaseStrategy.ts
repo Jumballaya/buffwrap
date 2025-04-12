@@ -54,8 +54,10 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
   }
 
   public insertBlank(index: number, count: number): void {
+    const originalCapacity = this.capacity;
+    this.ensureCapacity(this.capacity + count);
     const keys = Object.keys(this.config.struct) as (keyof T)[];
-    for (let i = this.capacity - 1; i >= index; i--) {
+    for (let i = originalCapacity - 1; i >= index; i--) {
       const to = i + count;
       for (const key of keys) {
         this.set(key, this.get(key, i), to);
@@ -66,6 +68,7 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
       const idx = index + i;
       for (const key of keys) {
         const { length, type } = this.config.struct[key];
+        console.log("Insert blank:", key, new type(length));
         this.set(key, new type(length).fill(0) as T[typeof key], idx);
       }
     }
