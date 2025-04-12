@@ -1,4 +1,5 @@
-import BufferWrap from "../../dist";
+import { ArrayBufferStrategy } from "../../src";
+import { BufferWrap } from "../../src/BufferWrap";
 import { BufferList } from "../../src/types";
 import { TestStruct, config } from "../helper";
 
@@ -8,7 +9,10 @@ test("Full roundtrip: from -> insert -> move -> copyInto -> verify", () => {
     b: new Float32Array([1.1, 1.2, 2.1, 2.2, 3.1, 3.2]),
   };
 
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 3 });
+  const buffer = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
+    capacity: 3,
+  });
   buffer.from(initial);
 
   buffer.insert(1, {
@@ -43,7 +47,10 @@ test("Full roundtrip with slice: from -> slice -> modify -> copyInto", () => {
     b: new Float32Array([1.1, 1.2, 2.1, 2.2, 3.1, 3.2]),
   };
 
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 3 });
+  const buffer = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
+    capacity: 3,
+  });
   buffer.from(source);
 
   const slice = buffer.slice(1, 3); // index 1 and 2
@@ -69,19 +76,15 @@ test("Full roundtrip with slice: from -> slice -> modify -> copyInto", () => {
 });
 
 test("Hydrate from shared buffer and verify slices share data", () => {
-  const sharedBuffer = new ArrayBuffer(config.capacity * 3 * 8); // oversized for safety
+  const sharedBuffer = new ArrayBuffer(config().capacity * 3 * 8); // oversized for safety
 
-  const bufferA = new BufferWrap<TestStruct>({
-    ...config,
+  const bufferA = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
     capacity: 3,
     buffer: sharedBuffer,
   });
 
-  const bufferB = new BufferWrap<TestStruct>({
-    ...config,
-    capacity: 3,
-    buffer: sharedBuffer,
-  });
+  const bufferB = bufferA.slice(0);
 
   bufferA.at(0).a = 42;
   bufferA.at(0).b = [3.14, 2.71];
@@ -104,19 +107,15 @@ test("Hydrate from shared buffer and verify slices share data", () => {
 });
 
 test("Insert and move between wraps sharing the same buffer", () => {
-  const sharedBuffer = new ArrayBuffer(config.capacity * 3 * 8); // over-alloc for demo
+  const sharedBuffer = new ArrayBuffer(config().capacity * 3 * 8); // over-alloc for demo
 
-  const bufferA = new BufferWrap<TestStruct>({
-    ...config,
+  const bufferA = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
     capacity: 2,
     buffer: sharedBuffer,
   });
 
-  const bufferB = new BufferWrap<TestStruct>({
-    ...config,
-    capacity: 2,
-    buffer: sharedBuffer,
-  });
+  const bufferB = bufferA.slice(0);
 
   bufferA.insert(0, {
     a: new Uint8Array([1]),
@@ -140,18 +139,15 @@ test("Insert slice from shared buffer safely using copy", () => {
   const sharedBuffer = new ArrayBuffer(8 * 4 * 3); // enough for 3 entries
 
   // Create wrapA with the shared buffer
-  const wrapA = new BufferWrap<TestStruct>({
-    ...config,
+  const wrapA = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
     capacity: 2,
     buffer: sharedBuffer,
+    strategy: ArrayBufferStrategy,
   });
 
   // Create wrapB with the same shared buffer
-  const wrapB = new BufferWrap<TestStruct>({
-    ...config,
-    capacity: 1,
-    buffer: sharedBuffer, // sharing the same buffer
-  });
+  const wrapB = wrapA.slice(0);
 
   // Insert data into wrapA
   wrapA.insert(0, {
@@ -168,7 +164,7 @@ test("Insert slice from shared buffer safely using copy", () => {
   const slice = wrapA.slice(0, 1);
 
   // Use copyInto to insert the data into wrapB (copying the slice data)
-  wrapB.copyInto({
+  slice.copyInto({
     a: new Uint8Array(1),
     b: new Float32Array(2),
   });

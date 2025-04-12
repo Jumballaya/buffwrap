@@ -1,9 +1,11 @@
-import BufferWrap from "../dist";
+import { ArrayBufferStrategy } from "../src";
+import { BufferWrap } from "../src/BufferWrap";
 
 test("BufferWrap clear errors", () => {
   const config = {
     struct: { vec: { length: 3, type: Float32Array } },
     capacity: 1,
+    strategy: ArrayBufferStrategy,
   };
   const wrap = new BufferWrap(config);
 

@@ -1,5 +1,4 @@
 import {
-  BufferType,
   ManagedProxy,
   ProxyAccessStrategy,
   ProxyContext,
@@ -7,12 +6,18 @@ import {
   ProxyShape,
 } from "./types";
 
-export class ProxyManager<T extends ProxyShape, B extends BufferType> {
+export class ProxyManager<T extends ProxyShape> {
   private cache = new Map<number, ManagedProxy<T>>();
-  private access: ProxyAccessStrategy<T, B>;
+  private access: ProxyAccessStrategy<T>;
+  private proxyKeys: Set<string>;
 
-  constructor(access: ProxyAccessStrategy<T, B>) {
+  constructor(access: ProxyAccessStrategy<T>, proxyKeys: string[]) {
     this.access = access;
+    this.proxyKeys = new Set(proxyKeys);
+
+    for (const key in Object.keys(access.get as any)) {
+      this.proxyKeys.add(key);
+    }
   }
 
   public getProxy(logicalIndex: number): ManagedProxy<T> {
@@ -26,6 +31,7 @@ export class ProxyManager<T extends ProxyShape, B extends BufferType> {
     const handler: ProxyHandler<ProxyHandlerShape<T>> = {
       get: (_, key: string) => {
         if (key === "currentIndex") return ctx.currentIndex;
+        if (!this.proxyKeys.has(key)) return undefined;
         return this.access.get(key as keyof T, ctx.currentIndex);
       },
       set: (_, key: string, value: any) => {
@@ -33,7 +39,7 @@ export class ProxyManager<T extends ProxyShape, B extends BufferType> {
           ctx.currentIndex = value;
           return true;
         }
-        this.access.set(key as keyof T, ctx.currentIndex as T[keyof T], value);
+        this.access.set(key as keyof T, value as T[keyof T], ctx.currentIndex);
         return true;
       },
     };

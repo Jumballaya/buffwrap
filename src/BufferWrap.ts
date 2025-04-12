@@ -1,11 +1,16 @@
+import {
+  generateOffsetsAndStride,
+  isProxy,
+  isSameBufferSource,
+  structsAreEqual,
+} from "./helpers";
 import { ProxyManager } from "./ProxyManager";
 import type {
   ArrayType,
   BufferList,
   WrapperConfig,
-  WrapperStructConfig,
   ManagedProxy,
-  ProxyAccessStrategy,
+  BufferStrategy,
   ProxyShape,
   BufferType,
   CopyTarget,
@@ -20,8 +25,8 @@ import type {
 //    data in a uniform buffer, etc. etc.
 export class BufferWrap<T extends ProxyShape, B extends BufferType> {
   private config: WrapperConfig<T, B>;
-  private strategy: ProxyAccessStrategy<T, B>;
-  private proxyManager: ProxyManager<T, B>;
+  private strategy: BufferStrategy<T, B>;
+  private proxyManager: ProxyManager<T>;
   private buffers: BufferList<T> = {} as BufferList<T>; // @TODO: better typing
   private baseOffset = 0;
   private _stride = 0;
@@ -42,13 +47,23 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
     this.strategy = new config.strategy({
       struct: this.config.struct,
       offsets: this.config.offsets!,
-      stride: this.stride,
+      stride: this._stride,
       capacity: this.config.capacity,
       alignment: this.config.alignment,
       ...(config.strategyArgs ?? {}),
     });
 
-    this.proxyManager = new ProxyManager<T, B>(this.strategy);
+    // Wrap the access get/set with the correct accessor
+    // logic so we don't have to force ProxyManager to
+    // manage offsets or anything BufferWrap should do
+    const access = {
+      get: <K extends keyof T>(key: K, i: number) =>
+        this.strategy.get(key, i + this.baseOffset / this._stride),
+      set: <K extends keyof T>(key: K, value: T[K], i: number) =>
+        this.strategy.set(key, value, i + this.baseOffset / this._stride),
+    };
+
+    this.proxyManager = new ProxyManager<T>(access, Object.keys(config.struct));
   }
 
   public get stride(): number {
@@ -156,6 +171,9 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
       );
     }
 
+    const physicalFrom = from;
+    const physicalTo = toId;
+    this.strategy.move(physicalFrom, physicalTo);
     this.proxyManager.move(from, toId);
   }
 
@@ -170,11 +188,8 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
       );
     }
 
-    const capacity = end - start;
-    const config = {
-      ...this.config,
-      capacity,
-    };
+    const config = this.cloneConfig(this.config);
+    config.capacity = end - start;
 
     // Create a new BufferWrap
     // But avoid invoking the constructor altogether
@@ -189,8 +204,6 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
     return slice;
   }
 
-  // if you dont insert an ArrayBuffer, the assumption is you are inserting
-  // only 1 element.
   public insert<OB extends BufferType = B>(
     idx: number,
     data: CopyTarget<T, OB>
@@ -202,38 +215,60 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
     }
 
     const insertCount = data instanceof BufferWrap ? data.config.capacity : 1;
-    const newCapacity = this.config.capacity + insertCount;
-
-    this.strategy.ensureCapacity(newCapacity);
-
-    // Move existing data forward
-    for (let i = this.config.capacity - 1; i >= idx; i--) {
-      this.strategy.move(i, i + insertCount);
-    }
 
     if (data instanceof BufferWrap) {
       const source = data.getStrategy();
-      this.strategy.from(source, 0, insertCount);
-    } else {
-      this.strategy.from(data, idx);
+      const target = this.getStrategy();
+      if (
+        source.getStride() !== target.getStride() ||
+        !structsAreEqual(data.config.struct, this.config.struct)
+      ) {
+        throw new Error("insert(): incompatible BufferWrap struct or stride");
+      }
+
+      // Avoids aliasing by cloning if the source and target share memorty
+      if (isSameBufferSource(this, data)) {
+        data = this.cloneBufferWrap(data);
+      }
     }
 
-    this.proxyManager.insert(idx, insertCount);
+    const newCapacity = this.config.capacity + insertCount;
+    this.strategy.ensureCapacity(newCapacity);
+
+    const logicalIdx = this.getLogicalIndex(idx);
+
+    // Move existing data forward
+    for (let i = this.config.capacity - 1; i >= idx; i--) {
+      const logicalFrom = this.getLogicalIndex(i);
+      const logicalTo = logicalFrom + insertCount;
+      this.strategy.move(logicalFrom, logicalTo);
+    }
+
+    if (data instanceof BufferWrap) {
+      this.strategy.from(data.getStrategy(), 0, insertCount, logicalIdx);
+    } else {
+      this.strategy.from(data, 0, 1, logicalIdx);
+    }
+
+    this.proxyManager.insert(logicalIdx, insertCount);
     this.setCapacity(newCapacity);
   }
 
   // clone or extract the current buffer into a CopyTarget
   public copyInto<OB extends BufferType = B>(target: CopyTarget<T, OB>) {
-    const sourceStart = 0;
-    const sourceEnd = this.config.capacity;
-
-    if (target instanceof BufferWrap) {
+    if (
+      target instanceof BufferWrap &&
+      target.config.capacity < this.config.capacity
+    ) {
       if (target.config.capacity < this.config.capacity) {
         throw new Error(
           `copyInto(): Target BufferWrap capacity (${target.config.capacity}) is smaller than source (${this.config.capacity})`
         );
       }
     }
+
+    const sourceStart = this.baseOffset / this.stride;
+    const sourceEnd = sourceStart + this.config.capacity;
 
     this.strategy.clone(target, sourceStart, sourceEnd);
   }
@@ -272,38 +307,54 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
   private getLogicalIndex(localIdx: number): number {
     return localIdx + this.baseOffset / this._stride;
   }
-}
 
-function alignOffset(offset: number, alignment: number): number {
-  return Math.ceil(offset / alignment) * alignment;
-}
-
-/**
- * Computes byte offsets and stride for a struct definition,
- * aligning each field appropriately.
- */
-function generateOffsetsAndStride<T extends ProxyShape, B extends BufferType>(
-  struct: WrapperStructConfig<T>,
-  alignment: number
-): [WrapperConfig<T, B>["offsets"], number] {
-  const offsets: Record<string, number> = {};
-  let stride = 0;
-  for (const key in struct) {
-    const { type, length } = struct[key];
-    const typeAlignment = type.BYTES_PER_ELEMENT;
-    const align = Math.max(alignment, typeAlignment);
-    stride = alignOffset(stride, align);
-    offsets[key] = stride;
-    stride += length * typeAlignment;
+  private cloneConfig(config: WrapperConfig<T, B>): WrapperConfig<T, B> {
+    return {
+      ...config,
+      struct: { ...config.struct },
+      offsets: { ...config.offsets } as WrapperConfig<T, B>["offsets"],
+      strategyArgs: config.strategyArgs
+        ? structuredClone(config.strategyArgs)
+        : undefined,
+    };
   }
 
-  return [offsets as WrapperConfig<T, B>["offsets"], stride];
-}
+  private cloneBufferWrap<U extends BufferType>(
+    source: BufferWrap<T, U>
+  ): BufferWrap<T, U> {
+    const cloneOffsetsConfig = this.cloneConfig(this.config);
+    cloneOffsetsConfig.capacity = source.config.capacity;
 
-function isProxy<T extends ProxyShape>(value: any): value is ManagedProxy<T> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof value.currentIndex === "number"
-  );
+    const [offsets, stride] = generateOffsetsAndStride(
+      cloneOffsetsConfig.struct,
+      cloneOffsetsConfig.alignment ?? 4
+    );
+
+    const tmp = Object.create(BufferWrap.prototype);
+    tmp.config = {
+      ...cloneOffsetsConfig,
+      offsets,
+    };
+    tmp._stride = stride;
+    tmp.baseOffset = 0;
+    tmp.buffers = {} as BufferList<T>;
+    tmp.strategy = new cloneOffsetsConfig.strategy({
+      struct: cloneOffsetsConfig.struct,
+      offsets: offsets!,
+      stride,
+      capacity: cloneOffsetsConfig.capacity,
+      alignment: cloneOffsetsConfig.alignment,
+      ...(cloneOffsetsConfig.strategyArgs ?? {}),
+    });
+    tmp.proxyManager = new ProxyManager<T>(
+      {
+        get: (key, i) => tmp.strategy.get(key, i),
+        set: (key, val, i) => tmp.strategy.set(key, val, i),
+      },
+      Object.keys(cloneOffsetsConfig.struct)
+    );
+
+    source.copyInto(tmp);
+    return tmp;
+  }
 }

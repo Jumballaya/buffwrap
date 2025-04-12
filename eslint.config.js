@@ -18,10 +18,15 @@ module.exports = [
     plugins: {
       "@typescript-eslint": tsPlugin,
     },
+    env: {
+      browser: true,
+      node: true,
+    },
     rules: {
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": ["warn"],
       "@typescript-eslint/explicit-module-boundary-types": "off",
+      "no-console": "off",
     },
   },
 ];

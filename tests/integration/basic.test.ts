@@ -1,4 +1,4 @@
-import BufferWrap from "../../dist";
+import { BufferWrap } from "../../src/BufferWrap";
 import { BufferList } from "../../src/types";
 import { TestStruct, config } from "../helper";
 
@@ -8,7 +8,10 @@ test("Hydrate from typed buffers and iterate to verify contents", () => {
     b: new Float32Array([1.1, 1.2, 2.1, 2.2, 3.1, 3.2]),
   };
 
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 3 });
+  const buffer = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
+    capacity: 3,
+  });
   buffer.from(sourceData);
 
   const values = [...buffer.iterate()].map((item) => ({
@@ -30,7 +33,10 @@ test("Hydrate from typed buffers and iterate to verify contents", () => {
 });
 
 test("Move then slice then modify", () => {
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 3 });
+  const buffer = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
+    capacity: 3,
+  });
   buffer.at(0).a = 7;
   buffer.at(0).b = [1, 2];
 
@@ -43,7 +49,10 @@ test("Move then slice then modify", () => {
 });
 
 test("Chain insert -> move -> copyInto preserves correct values", () => {
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 0 });
+  const buffer = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
+    capacity: 0,
+  });
 
   buffer.insert(0, {
     a: new Uint8Array([1]),
@@ -73,7 +82,10 @@ test("Chain insert -> move -> copyInto preserves correct values", () => {
 });
 
 test("Insert and copyInto BufferList", () => {
-  const buffer = new BufferWrap<TestStruct>({ ...config, capacity: 0 }); // start with 0 capacity
+  const buffer = new BufferWrap<TestStruct, ArrayBuffer>({
+    ...config(),
+    capacity: 0,
+  }); // start with 0 capacity
   buffer.insert(0, {
     a: new Uint8Array([5]),
     b: new Float32Array([5.5, 6.6]),

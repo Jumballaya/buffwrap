@@ -3,17 +3,17 @@ import {
   BufferList,
   BufferType,
   CopyTarget,
-  ProxyAccessStrategy,
+  BufferStrategy,
   ProxyShape,
   StrategyConfig,
 } from "./types";
 
 export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
-  implements ProxyAccessStrategy<T, B>
+  implements BufferStrategy<T, B>
 {
-  protected config: StrategyConfig<T>;
+  protected config: StrategyConfig<T, B>;
 
-  constructor(config: StrategyConfig<T>) {
+  constructor(config: StrategyConfig<T, B>) {
     this.config = config;
   }
 
@@ -49,7 +49,7 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
     for (const key of keys) {
       const tmp = this.get(key, a);
       this.set(key, this.get(key, b), a);
-      this.set(key, tmp, a);
+      this.set(key, tmp, b);
     }
   }
 
@@ -73,25 +73,36 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
 
   public from<OB extends BufferType = B>(
     target: CopyTarget<T, OB>,
-    from = 0,
-    to = this.capacity
+    sourceStart = 0,
+    sourceEnd = this.capacity,
+    destStart = 0
   ): void {
     if (target instanceof ArrayBuffer) {
-      this.fromArrayBuffer(target, from, to);
+      this.fromArrayBuffer(target, sourceStart, sourceEnd, destStart);
       return;
     }
 
     if (target instanceof BaseStrategy) {
-      this.fromStrategy(target, from, to);
+      this.fromStrategy(target, sourceStart, sourceEnd, destStart);
       return;
     }
 
     if (target instanceof BufferWrap) {
-      this.fromStrategy(target.getStrategy(), from, to);
+      this.fromStrategy(
+        target.getStrategy(),
+        sourceStart,
+        sourceEnd,
+        destStart
+      );
       return;
     }
 
-    this.fromBufferList(target as BufferList<T>, from, to);
+    this.fromBufferList(
+      target as BufferList<T>,
+      sourceStart,
+      sourceEnd,
+      destStart
+    );
   }
 
   public clone<OB extends BufferType = B>(
@@ -117,13 +128,15 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
 
   private fromArrayBuffer(
     data: ArrayBuffer,
-    from = 0,
-    to = this.capacity
+    sourceStart = 0,
+    sourceEnd = this.capacity,
+    destStart = 0
   ): void {
     const view = new DataView(data);
     const stride = this.getStride();
     const keys = Object.keys(this.config.struct) as (keyof T)[];
-    for (let i = from; i < to; i++) {
+    for (let i = sourceStart; i < sourceEnd; i++) {
+      const destIndex = destStart + (i - sourceStart);
       const base = i * stride;
       for (const key of keys) {
         const { length, type } = this.config.struct[key];
@@ -131,7 +144,7 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
 
         if (length == 1) {
           const val = this.readPrimitive(view, type, base + offset);
-          this.set(key, val as T[typeof key], i);
+          this.set(key, val as T[typeof key], destIndex);
           continue;
         }
         const arr = new Array(length);
@@ -142,37 +155,53 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
             base + offset + j * type.BYTES_PER_ELEMENT
           );
         }
-        this.set(key, arr as T[typeof key], i);
+        this.set(key, arr as T[typeof key], destIndex);
       }
     }
   }
 
   private fromStrategy<OB extends BufferType = B>(
-    data: ProxyAccessStrategy<T, OB>,
-    from = 0,
-    to = this.capacity
+    data: BufferStrategy<T, OB>,
+    sourceStart = 0,
+    sourceEnd = this.capacity,
+    destStart = 0
   ) {
+    // Code Smell
+    const baseOffset =
+      typeof (this as any).baseOffset === "number"
+        ? (this as any).baseOffset
+        : 0;
+    const stride = this.getStride();
+    const destOffset = baseOffset / stride;
+    //
+
     const keys = Object.keys(this.config.struct) as (keyof T)[];
-    for (let i = from; i < to; i++) {
+    for (let i = sourceStart; i < sourceEnd; i++) {
+      const destIndex = destStart + (i - sourceStart) + destOffset;
       for (const key of keys) {
         const val = data.get(key, i);
-        this.set(key, val, i);
+        this.set(key, val, destIndex);
       }
     }
   }
 
   private fromBufferList(
     data: Partial<BufferList<T>>,
-    from = 0,
-    to = this.capacity
+    sourceStart = 0,
+    sourceEnd = this.capacity,
+    destStart = 0
   ) {
     const keys = Object.keys(this.config.struct) as (keyof T)[];
     for (const key of keys) {
       const buffer = data[key];
       if (!buffer) continue;
-      for (let i = from; i < to; i++) {
-        const slice = buffer.subarray(i, i + 1) as T[typeof key];
-        this.set(key, slice, i);
+      for (let i = sourceStart; i < sourceEnd; i++) {
+        const destIndex = destStart + (i - sourceStart);
+        const length = this.config.struct[key].length;
+        const slice = Array.from(
+          buffer.subarray(i * length, (i + 1) * length)
+        ) as T[typeof key];
+        this.set(key, slice, destIndex);
       }
     }
   }
@@ -206,15 +235,25 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
   }
 
   private cloneStrategy<OB extends BufferType = B>(
-    target: ProxyAccessStrategy<T, OB>,
+    target: BufferStrategy<T, OB>,
     from = 0,
     to = this.capacity
   ) {
+    // Code Smell
+    const targetBaseOffset =
+      typeof (target as any).baseOffset === "number"
+        ? (target as any).baseOffset
+        : 0;
+    const stride = this.getStride();
+    const destOffset = targetBaseOffset / stride;
+    //
+
     const keys = Object.keys(this.config.struct) as (keyof T)[];
-    for (let i = from; i < to; i++) {
+    const count = to - from;
+    for (let i = 0; i < count; i++) {
       for (const key of keys) {
-        const value = this.get(key, i);
-        target.set(key, value, i);
+        const value = this.get(key, from + i);
+        target.set(key, value, i + destOffset);
       }
     }
   }
@@ -227,8 +266,9 @@ export abstract class BaseStrategy<T extends ProxyShape, B extends BufferType>
       if (!buffer) continue;
 
       const { length } = this.config.struct[key];
-      for (let i = from; i < to; i++) {
-        const value = this.get(key, i);
+      const count = to - from;
+      for (let i = 0; i < count; i++) {
+        const value = this.get(key, from + i);
         const offset = i * length;
         if (typeof value === "number") {
           buffer[offset] = value;

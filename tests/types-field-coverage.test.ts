@@ -1,4 +1,4 @@
-import BufferWrap from "../dist";
+import { BufferWrap } from "../src";
 import { ArrayBufferStrategy } from "../src/strategies/ArrayBufferStrategy";
 import { WrapperConfig } from "../src/types";
 

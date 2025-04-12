@@ -67,7 +67,7 @@ export type BufferType =
   | AudioBuffer;
 
 export type CopyTarget<T extends ProxyShape, B extends BufferType> =
-  | ProxyAccessStrategy<T, B>
+  | BufferStrategy<T, B>
   | BufferWrap<T, B>
   | Partial<BufferList<T>>
   | BufferType;
@@ -85,19 +85,20 @@ export type WrapperStructConfig<T extends ProxyShape> = {
   [K in keyof T]: StructFieldConfig;
 };
 
-export interface StrategyConfig<T extends ProxyShape> {
+export interface StrategyConfig<T extends ProxyShape, B extends BufferType> {
   struct: WrapperStructConfig<T>;
   offsets: { [K in keyof T]: number };
   stride: number;
   capacity: number;
   alignment?: number;
   extensions?: Record<string, any>;
+  buffer?: B;
 }
 
 export type StrategyConstructor<
   T extends ProxyShape = any,
   B extends BufferType = ArrayBuffer
-> = new (config: StrategyConfig<T>) => ProxyAccessStrategy<T, B>;
+> = new (config: StrategyConfig<T, B>) => BufferStrategy<T, B>;
 
 export type WrapperConfig<T extends ProxyShape, B extends BufferType> = {
   struct: WrapperStructConfig<T>;
@@ -120,13 +121,13 @@ export interface ProxyContext {
 export type ProxyHandlerShape<T extends ProxyShape> = ProxyContext &
   Partial<Record<keyof T, ProxyPrimitive>>;
 
-export interface ProxyAccessStrategy<
-  T extends ProxyShape,
-  B extends BufferType
-> {
+export interface ProxyAccessStrategy<T extends ProxyShape> {
   get<K extends keyof T>(key: K, index: number): T[K]; // Gets a single field's data on a single struct at index (e.g. get position struct #6: [3,2,1])
   set<K extends keyof T>(key: K, value: T[K], index: number): void; // Sets a single field's data on a single struct at index (e.g. set position as [1,2,3] on struct #6)
+}
 
+export interface BufferStrategy<T extends ProxyShape, B extends BufferType>
+  extends ProxyAccessStrategy<T> {
   getByteLength(): number; // return the full byteLength of the underlying buffer
   getStride(): number; // returns the fully aligned stride
   getBuffer(): B; // returns the raw buffer
@@ -139,8 +140,9 @@ export interface ProxyAccessStrategy<
 
   from<OB extends BufferType = B>(
     target: CopyTarget<T, OB>,
-    from?: number,
-    to?: number
+    sourceStart?: number,
+    sourceEnd?: number,
+    destStart?: number
   ): void; // writes data from target -> this
   clone<OB extends BufferType = B>(
     target: CopyTarget<T, OB>,

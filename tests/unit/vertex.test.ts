@@ -1,4 +1,4 @@
-import BufferWrap from "../../dist";
+import { ArrayBufferStrategy, BufferWrap } from "../../src";
 
 type VertexStruct = {
   position: [number, number, number];
@@ -7,13 +7,14 @@ type VertexStruct = {
 };
 
 test("Can create a simple quad", () => {
-  const quadWrapper = new BufferWrap<VertexStruct>({
+  const quadWrapper = new BufferWrap<VertexStruct, ArrayBuffer>({
     capacity: 4,
     struct: {
       position: { length: 3, type: Float32Array },
       texCoord: { length: 2, type: Float32Array },
       normal: { length: 3, type: Float32Array },
     },
+    strategy: ArrayBufferStrategy,
   });
 
   const xPos = [-1, 1];

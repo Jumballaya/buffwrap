@@ -8,10 +8,10 @@ export class ArrayBufferStrategy<T extends ProxyShape> extends BaseStrategy<
   private buffer: ArrayBuffer;
   private view: DataView;
 
-  constructor(config: StrategyConfig<T>) {
+  constructor(config: StrategyConfig<T, ArrayBuffer>) {
     super(config);
     const byteLength = config.capacity * config.stride;
-    this.buffer = new ArrayBuffer(byteLength);
+    this.buffer = config.buffer ?? new ArrayBuffer(byteLength);
     this.view = new DataView(this.buffer);
   }
 
@@ -26,22 +26,47 @@ export class ArrayBufferStrategy<T extends ProxyShape> extends BaseStrategy<
 
     const res = new Array(length) as number[];
     for (let i = 0; i < length; i++) {
-      res[i] = this.readPrimitive(this.view, type, offset + i);
+      res[i] = this.readPrimitive(
+        this.view,
+        type,
+        offset + i * type.BYTES_PER_ELEMENT
+      );
     }
     return res as T[K];
   }
 
   set<K extends keyof T>(key: K, value: T[K], index: number): void {
+    if (value === undefined) {
+      throw new Error(
+        `[set] Attempted to write undefined to field ${String(
+          key
+        )} at index ${index}`
+      );
+    }
     const { offsets, struct, stride } = this.config;
-    const offset = index * stride + offsets[key];
+    const base = index * stride;
+    const offset = base + offsets[key];
     const { type, length } = struct[key];
 
     if (length === 1) {
-      this.writePrimitive(this.view, type, offset, value as number);
+      const primitive =
+        typeof value === "number"
+          ? value
+          : Array.isArray(value)
+          ? value[0]
+          : (value as any)[0]; // covers Uint8Array, Float32Array, etc.
+      this.writePrimitive(this.view, type, offset, primitive as number);
       return;
     }
 
     const arr = value as number[];
+    if (!Array.isArray(arr) || arr.length !== length) {
+      throw new Error(
+        `set(): Field "${String(
+          key
+        )}" expects array of length ${length}, but got ${arr.length}`
+      );
+    }
     for (let i = 0; i < length; i++) {
       this.writePrimitive(
         this.view,
