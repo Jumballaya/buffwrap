@@ -9,7 +9,7 @@ describe("BufferWrap [at]", () => {
     });
 
     const p = buf.at(0);
-    expect(p.currentIndex).toBe(0);
+    expect((p as any).currentIndex).toBe(0);
   });
 
   test("Can access and modify simple scalar field", () => {

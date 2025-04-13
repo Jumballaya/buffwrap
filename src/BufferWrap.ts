@@ -94,7 +94,7 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
   // Generates a proxy object that represents your struct at
   // the given index. updating this proxy will update the
   // underlying buffer
-  public at(idx: number): ManagedProxy<T> {
+  public at(idx: number): T {
     if (idx < 0 || idx >= this.config.capacity) {
       throw new Error(
         `at(): Index ${idx} is out of bounds (capacity: ${this.config.capacity}).`
@@ -147,7 +147,7 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
   // the index 10 and that would be reflected in the underlying data buffer
   // or you can do something like .move(42, 10) which will move the struct
   // data at index 42 to index 10
-  public move(fromId: number | ManagedProxy<T>, toId: number) {
+  public move(fromId: number | T, toId: number) {
     const from = isProxy(fromId)
       ? isProxy(fromId.currentIndex)
         ? -1
@@ -294,7 +294,7 @@ export class BufferWrap<T extends ProxyShape, B extends BufferType> {
     this.proxyManager.swap(a, b);
   }
 
-  public *iterate(): Generator<ManagedProxy<T>, void, unknown> {
+  public *iterate(): Generator<T, void, unknown> {
     for (let i = 0; i < this.config.capacity; i++) {
       yield this.at(i);
     }
