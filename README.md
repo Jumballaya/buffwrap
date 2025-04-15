@@ -46,7 +46,7 @@ npm install bufferwrap
 import { BufferWrap } from "bufferwrap";
 import { ArrayBufferStrategy } from "bufferwrap";
 
-const wrap = new BufferWrap({
+const wrap = new BufferWrap<{ id: number; pos: [number, number] }, ArrayBuffer>({
   struct: {
     id: { type: Uint8Array, length: 1 },
     pos: { type: Float32Array, length: 2 },
@@ -67,7 +67,7 @@ wrap.at(0).pos = [1.1, 2.2];
 import { BufferWrap } from "bufferwrap";
 import { NodeBufferStrategy } from "bufferwrap/node";
 
-const wrap = new BufferWrap({
+const wrap = new BufferWrap<{ id: number; pos: [number, number] }, Buffer>({
   struct: {
     id: { type: Uint8Array, length: 1 },
     pos: { type: Float32Array, length: 2 },
