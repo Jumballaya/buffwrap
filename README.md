@@ -28,7 +28,7 @@ BufferWrap is for developers building high-performance, real-time systems that w
 - AI memory and behavior buffers
 - WASM/shared memory/threaded applications
 
-It provides a `BufferWrap<T>` interface for struct access and mutation, powered by a Proxy layer that maps logical indices to memory regions — fully type-safe and strategy-driven.
+It provides a `BufferWrap<T>` interface for struct access and mutation, using the Proxy layer that maps logical indices to memory regions.
 
 ---
 
