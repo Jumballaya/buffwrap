@@ -12,8 +12,8 @@ If you’re a developer building systems where performance and data layout matte
 
 ## Links
 
-- 📦 [View on npm](https://www.npmjs.com/package/buffwrap)
-- 📘 [View Docs](https://jumballaya.github.io/buffwrap/)
+- [View on npm](https://www.npmjs.com/package/buffwrap)
+- [View Docs](https://jumballaya.github.io/buffwrap/)
 
 ---
 
@@ -21,12 +21,12 @@ If you’re a developer building systems where performance and data layout matte
 
 BufferWrap is for developers building high-performance, real-time systems that work directly with memory:
 
-- 🧱 Game engines & ECS architectures
-- 🎮 WebGL / WebGPU pipelines (UBOs, SSBOs, attributes)
-- 📊 Data visualization and simulation dashboards
-- 🎧 Audio graph memory modeling
-- 🤖 AI memory and behavior buffers
-- 🧵 WASM/shared memory/threaded applications
+- Game engines & ECS architectures
+- WebGL / WebGPU pipelines (UBOs, SSBOs, attributes)
+- Data visualization and simulation dashboards
+- Audio graph memory modeling
+- AI memory and behavior buffers
+- WASM/shared memory/threaded applications
 
 It provides a `BufferWrap<T>` interface for struct access and mutation, powered by a Proxy layer that maps logical indices to memory regions — fully type-safe and strategy-driven.
 
