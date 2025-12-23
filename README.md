@@ -4,7 +4,7 @@
 
 # BufferWrap
 
-BufferWrap is a TypeScript library that simplifies working with structured binary data inside ArrayBuffers. It provides a proxy-based interface over raw buffers, making it ideal for GPU-style data pipelines, interleaved memory formats, particle systems, WebGPU/WebGL data, and more.
+BufferWrap is a TypeScript library that simplifies working with structured binary data inside ArrayBuffers. Designed around the idea of a memory arena and pool allocator, It provides a proxy-based interface over raw buffers, making it ideal for GPU-style data pipelines, interleaved memory formats, particle systems, WebGPU/WebGL data, and more.
 
 If you’re a developer building systems where performance and data layout matter, BufferWrap will save you time and eliminate bugs caused by manual memory handling. It offers the power of C-like struct access in JavaScript/TypeScript, with modern tools like generator-based iteration, lazy attribute extraction, and full support for shared memory.
 
